@@ -70,7 +70,7 @@ class InvoiceSchema(Schema):
     nonce = fields.Integer()
     secret = fields.String()
     amount = fields.Integer()
-    amount_nzd = fields.Integer()
+    amount_zap = fields.Integer()
     bronze_broker_reference = fields.String()
     state = fields.String()
 
@@ -81,7 +81,7 @@ class Invoice(db.Model):
     nonce = db.Column(db.Integer, nullable=False)
     secret = db.Column(db.String(255), nullable=False)
     amount = db.Column(db.Integer, nullable=False)
-    amount_nzd = db.Column(db.Integer, nullable=False)
+    amount_zap = db.Column(db.Integer, nullable=False)
     bronze_broker_reference = db.Column(db.String(255), nullable=False)
     state = db.Column(db.String(255), nullable=False)
 
@@ -162,8 +162,8 @@ security = Security(app, user_datastore)
 def _format_amount(view, context, model, name):
     if name == 'amount':
         return Markup(model.amount / 100)
-    if name == 'amount_nzd':
-        return round((model.amount_nzd / 100),2)
+    if name == 'amount_zap':
+        return round((model.amount_zap / 100),2)
 
 class ReloadingIterator:
     def __init__(self, iterator_factory):

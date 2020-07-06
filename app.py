@@ -21,6 +21,7 @@ from utils import check_hmac_auth, generate_key
 logger = logging.getLogger(__name__)
 ws_invoices = {}
 ws_sids = {}
+MAX_DETAIL_CHARS = 12
 
 #
 # Helper functions
@@ -181,9 +182,6 @@ def validate_values(fields, values):
     for field in fields:
         name = field["label"]
         value = values[name]
-        print(name)
-        print(value)
-        print(field)
         if not value and (not "allow_empty" in field or not field["allow_empty"]):
             return "please enter a value for '%s'" % name
         type_ = field["type"].lower()
@@ -196,7 +194,24 @@ def validate_values(fields, values):
         if type_ == "string":
             if "min_chars" in field and len(value) < field["min_chars"]:
                 return "value for '%s' has a minimum number of characters of %d" % (name, field["min_chars"])
+        max_chars = MAX_DETAIL_CHARS
+        if isinstance(field["target"], list):
+            max_chars = MAX_DETAIL_CHARS * len(field["target"])
+        if len(value) > max_chars:
+            return "value for '%s' is too long" % name
     return None
+
+def bank_transaction_details(utility, values):
+    details = {}
+    for field in utility.fields_description_json:
+        target = field["target"]
+        value = values[field["label"]]
+        if isinstance(target, list):
+            for t in target:
+                details[t], value = value[:MAX_DETAIL_CHARS], value[MAX_DETAIL_CHARS:]
+        else:
+            details[target] = value
+    return details
 
 @app.route("/utility", methods=["GET", "POST"])
 def utility():
@@ -227,7 +242,7 @@ def utility():
                 state = STATE_CHECK
         elif state == STATE_CHECK:
             state = STATE_SUBMIT
-            return "TODO: create invoice"
+            return "TODO: create invoice for %s NZD to %s (%s)" % (amount, utility.bank_account, json.dumps(bank_transaction_details(utility, values)))
         return render_template("utility.html", utility=utility, state=state, amount=amount, values=values, error=error)
     else:
         return render_template("utility.html", utility=utility, state=STATE_CREATE, values=werkzeug.MultiDict())
