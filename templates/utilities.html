@@ -1,0 +1,15 @@
+<html>
+    <body>
+        <div>
+            <form action="/utility">
+                Choose utility:
+                <select name="utility">
+                    {% for utility in utilities %}
+                    <option value="{{utility.id}}">{{utility.name}}</option>
+                    {% endfor %}
+                </select>
+                <input type="submit" value="Choose"></input>
+            </form>
+        </div>
+    </body>
+</html>

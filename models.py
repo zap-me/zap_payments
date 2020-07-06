@@ -61,10 +61,6 @@ class User(db.Model, UserMixin):
     def from_email(cls, session, email):
         return session.query(cls).filter(cls.email == email).first()
 
-    @classmethod
-    def all(cls, session):
-        return session.query(cls).all()
-
     def __str__(self):
         return '%s' % self.email
 
@@ -130,6 +126,18 @@ class Utility(db.Model):
     @classmethod
     def count(cls, session):
         return session.query(cls).count()
+
+    @classmethod
+    def all(cls, session):
+        return session.query(cls).all()
+
+    @classmethod
+    def all_alphabetical(cls, session):
+        return session.query(cls).order_by(cls.name).all()
+
+    @classmethod
+    def from_id(cls, session, utility_id):
+        return session.query(cls).filter(cls.id == utility_id).first()
 
     def __repr__(self):
         return "<Utility %r>" % (self.name)

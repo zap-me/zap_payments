@@ -12,7 +12,7 @@ from flask_socketio import Namespace, emit, join_room, leave_room
 from flask_security import current_user
 
 from app_core import app, db, socketio
-from models import security, user_datastore, Role, User, Invoice
+from models import security, user_datastore, Role, User, Invoice, Utility
 import admin
 from utils import check_hmac_auth, generate_key
 
@@ -170,10 +170,16 @@ socketio.on_namespace(SocketIoNamespace("/"))
 # Public endpoints
 #
 
-@app.route("/bill")
-def bill():
-    #TODO: show the various utilities available to pay
-    return render_template("bill")
+@app.route("/utilities")
+def utilities():
+    utilities = Utility.all_alphabetical(db.session)
+    return render_template("utilities.html", utilities=utilities)
+
+@app.route("/utility")
+def utility():
+    utility_id = int(request.args.get("utility"))
+    utility = Utility.from_id(db.session, utility_id)
+    return render_template("utility.html", utility=utility)
 
 if __name__ == "__main__":
     setup_logging(logging.DEBUG)
