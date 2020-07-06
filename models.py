@@ -116,6 +116,28 @@ class Invoice(db.Model):
         schema = InvoiceSchema()
         return schema.dump(self).data
 
+class Utility(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.DateTime(), nullable=False)
+    name = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.String())
+    bank_account = db.Column(db.String(255), nullable=False)
+    fields_description = db.Column(db.String(), nullable=False)
+
+    def __init__(self, name):
+        self.generate_defaults()
+
+    def generate_defaults(self):
+        self.date = datetime.datetime.now()
+
+    @classmethod
+    def count(cls, session):
+        return session.query(cls).count()
+
+    def __repr__(self):
+        return "<Utility %r>" % (self.name)
+
+
 #
 # Setup Flask-Security
 #
@@ -165,16 +187,24 @@ class RestrictedModelView(BaseModelView):
                 current_user.has_role('admin'))
 
 class UserModelView(RestrictedModelView):
-    can_create = False
-    can_delete = False
-    can_edit = False
     column_list = ['merchant_name', 'merchant_code', 'email', 'roles', 'max_settlements_per_month', 'merchant_rate', 'customer_rate', 'wallet_address']
     column_editable_list = ['merchant_name', 'roles', 'max_settlements_per_month', 'merchant_rate', 'customer_rate']
 
 class InvoiceModelView(RestrictedModelView):
-    can_create = False
-    can_delete = False
-    can_edit = False
-
     column_formatters = dict(amount=_format_amount, amount_receive=_format_amount)
     column_labels = dict(amount='ZAP Amount', amount_receive='NZD Amount')
+
+class UtilityModelView(RestrictedModelView):
+    can_create = True
+    can_delete = True
+    can_edit = True
+
+    form_widget_args = {
+        'description': {
+            'rows': 5
+        },
+        'fields_description': {
+            'rows': 20,
+            'style': 'font-family: monospace;'
+        }
+    }
