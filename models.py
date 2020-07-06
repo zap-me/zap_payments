@@ -47,21 +47,14 @@ class Role(db.Model, RoleMixin):
 
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
-    merchant_name = db.Column(db.String(255))
-    merchant_code = db.Column(db.String(255), unique=True)
     email = db.Column(db.String(255), unique=True)
     password = db.Column(db.String(255))
     active = db.Column(db.Boolean())
     confirmed_at = db.Column(db.DateTime())
     roles = db.relationship('Role', secondary=roles_users,
                             backref=db.backref('users', lazy='dynamic'))
-    max_settlements_per_month = db.Column(db.Integer)
-    merchant_rate = db.Column(db.Numeric)
-    customer_rate = db.Column(db.Numeric)
-    wallet_address = db.Column(db.String(255))
 
     def __init__(self, **kwargs):
-        self.merchant_code = generate_key(4)
         super().__init__(**kwargs)
 
     @classmethod
@@ -73,7 +66,7 @@ class User(db.Model, UserMixin):
         return session.query(cls).all()
 
     def __str__(self):
-        return '%s (%s)' % (self.merchant_code, self.merchant_name)
+        return '%s' % self.email
 
 class InvoiceSchema(Schema):
     date = fields.Float()
@@ -187,8 +180,8 @@ class RestrictedModelView(BaseModelView):
                 current_user.has_role('admin'))
 
 class UserModelView(RestrictedModelView):
-    column_list = ['merchant_name', 'merchant_code', 'email', 'roles', 'max_settlements_per_month', 'merchant_rate', 'customer_rate', 'wallet_address']
-    column_editable_list = ['merchant_name', 'roles', 'max_settlements_per_month', 'merchant_rate', 'customer_rate']
+    column_list = ['email', 'roles']
+    column_editable_list = ['roles']
 
 class InvoiceModelView(RestrictedModelView):
     column_formatters = dict(amount=_format_amount, amount_receive=_format_amount)

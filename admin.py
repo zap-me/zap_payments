@@ -8,7 +8,7 @@ from models import security, RestrictedModelView, UserModelView, InvoiceModelVie
 # Create admin
 admin = flask_admin.Admin(
     app,
-    'Zap Merchant Server',
+    'Zap Bill Payment',
     base_template='my_master.html',
     template_mode='bootstrap3',
 )

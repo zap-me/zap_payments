@@ -181,7 +181,6 @@ if __name__ == "__main__":
     # create tables
     db.create_all()
     create_role("admin", "super user")
-    create_role("finance", "Can view/action settlements")
     db.session.commit()
 
     # process commands
