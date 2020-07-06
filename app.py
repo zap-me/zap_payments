@@ -5,11 +5,13 @@ import sys
 import json
 import time
 import requests
+import decimal
 
 from flask import url_for, redirect, render_template, request, abort, jsonify
 from flask_security.utils import encrypt_password
 from flask_socketio import Namespace, emit, join_room, leave_room
 from flask_security import current_user
+import werkzeug
 
 from app_core import app, db, socketio
 from models import security, user_datastore, Role, User, Invoice, Utility
@@ -175,11 +177,60 @@ def utilities():
     utilities = Utility.all_alphabetical(db.session)
     return render_template("utilities.html", utilities=utilities)
 
-@app.route("/utility")
+def validate_values(fields, values):
+    for field in fields:
+        name = field["label"]
+        value = values[name]
+        print(name)
+        print(value)
+        print(field)
+        if not value and (not "allow_empty" in field or not field["allow_empty"]):
+            return "please enter a value for '%s'" % name
+        type_ = field["type"].lower()
+        if type_ == "number":
+            num = int(value)
+            if "min" in field and num < field["min"]:
+                return "value for '%s' has a minimum of %d" % (name, field["min"])
+            if "max" in field and num > field["max"]:
+                return "value for '%s' has a maximum of %d" % (name, field["max"])
+        if type_ == "string":
+            if "min_chars" in field and len(value) < field["min_chars"]:
+                return "value for '%s' has a minimum number of characters of %d" % (name, field["min_chars"])
+    return None
+
+@app.route("/utility", methods=["GET", "POST"])
 def utility():
+    STATE_CREATE = "create"
+    STATE_CHECK = "check"
+    STATE_SUBMIT = "submit"
+
     utility_id = int(request.args.get("utility"))
     utility = Utility.from_id(db.session, utility_id)
-    return render_template("utility.html", utility=utility)
+    Utility.jsonify_fields_descriptions([utility])
+    if request.method == "POST":
+        state = request.form.get("zbp_state")
+        amount = request.form.get("zbp_amount")
+        values = request.form
+        error = None
+        if state == STATE_CREATE:
+            try:
+                # check amount
+                amount = decimal.Decimal(amount)
+                if amount <= 0:
+                    error = "amount must be greater then zero"
+                else:
+                    # check field values
+                    error = validate_values(utility.fields_description_json, values)
+            except:
+                error = "amount must be valid number"
+            if not error:
+                state = STATE_CHECK
+        elif state == STATE_CHECK:
+            state = STATE_SUBMIT
+            return "TODO: create invoice"
+        return render_template("utility.html", utility=utility, state=state, amount=amount, values=values, error=error)
+    else:
+        return render_template("utility.html", utility=utility, state=STATE_CREATE, values=werkzeug.MultiDict())
 
 if __name__ == "__main__":
     setup_logging(logging.DEBUG)

@@ -25,7 +25,7 @@ Here is a proposed format for the `fields_description` column:
   {
     "label": "User Name",
     "description": "The user name assocatiated with your account",
-    "type": "string",
+    "type": "text",
     "min_chars": 4,
     "allow_empty": false,
     "target": ["code", "reference"]

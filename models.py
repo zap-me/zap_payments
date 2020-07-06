@@ -139,6 +139,11 @@ class Utility(db.Model):
     def from_id(cls, session, utility_id):
         return session.query(cls).filter(cls.id == utility_id).first()
 
+    @classmethod
+    def jsonify_fields_descriptions(cls, utilities):
+        for utility in utilities:
+            utility.fields_description_json = json.loads(utility.fields_description)
+
     def __repr__(self):
         return "<Utility %r>" % (self.name)
 
