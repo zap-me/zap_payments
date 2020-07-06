@@ -75,6 +75,7 @@ class InvoiceSchema(Schema):
     secret = fields.String()
     amount = fields.Integer()
     amount_nzd = fields.Integer()
+    bronze_broker_reference = fields.String()
     state = fields.String()
 
 class Invoice(db.Model):
@@ -83,7 +84,10 @@ class Invoice(db.Model):
     token = db.Column(db.String(255), unique=True, nullable=False)
     nonce = db.Column(db.Integer, nullable=False)
     secret = db.Column(db.String(255), nullable=False)
-    #TODO: invoice details (amount, amount nzd, state etc..)
+    amount = db.Column(db.Integer, nullable=False)
+    amount_nzd = db.Column(db.Integer, nullable=False)
+    bronze_broker_reference = db.Column(db.String(255), nullable=False)
+    state = db.Column(db.String(255), nullable=False)
 
     def __init__(self, name):
         self.generate_defaults()
@@ -113,9 +117,9 @@ class Utility(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     date = db.Column(db.DateTime(), nullable=False)
     name = db.Column(db.String(255), nullable=False)
-    description = db.Column(db.String())
+    description = db.Column(db.Text())
     bank_account = db.Column(db.String(255), nullable=False)
-    fields_description = db.Column(db.String(), nullable=False)
+    fields_description = db.Column(db.Text(), nullable=False)
 
     def __init__(self, name):
         self.generate_defaults()
