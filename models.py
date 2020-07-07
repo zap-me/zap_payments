@@ -165,6 +165,13 @@ def _format_amount(view, context, model, name):
     if name == 'amount_zap':
         return round((model.amount_zap / 100),2)
 
+def not_allowed(form, field):
+    mandatory = ['label', 'description', 'type', 'target']
+    json_data = json.loads(field.data)
+    for row in json_data:
+        if any(x not in row for x in mandatory):
+            raise ValidationError('{} does not have all mandatory fields'.format(row))
+
 class ReloadingIterator:
     def __init__(self, iterator_factory):
         self.iterator_factory = iterator_factory
@@ -218,3 +225,7 @@ class UtilityModelView(RestrictedModelView):
             'style': 'font-family: monospace;'
         }
     }
+
+    form_args = dict(
+        fields_description = dict(validators=[not_allowed])
+    )
