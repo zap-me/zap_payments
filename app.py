@@ -4,14 +4,17 @@ import logging
 import sys
 import json
 import time
-import requests
 import decimal
+import hmac
+import hashlib
+import base64
 
 from flask import url_for, redirect, render_template, request, abort, jsonify
 from flask_security.utils import encrypt_password
 from flask_socketio import Namespace, emit, join_room, leave_room
 from flask_security import current_user
 import werkzeug
+import requests
 
 from app_core import app, db, socketio
 from models import security, user_datastore, Role, User, Invoice, Utility
@@ -213,11 +216,46 @@ def bank_transaction_details(utility, values):
             details[target] = value
     return details
 
+def hmac_sha256(secret, msg):
+    sig = hmac.new(bytes(secret, 'latin-1'), msg=bytes(msg, 'latin-1'), digestmod=hashlib.sha256).digest()
+    return base64.b64encode(sig)
+
+def create_invoice(utility, details, amount):
+    # init bank recipient params
+    reference = details["reference"] if "reference" in details else ""
+    code = details["code"] if "code" in details else ""
+    particulars = details["particulars"] if "particulars" in details else ""
+    # create request body
+    recipient_params = dict(reference=reference, code=code, particulars=particulars)
+    body = dict(key=app.config["BRONZE_API_KEY"], nonce=int(time.time()), market="ZAPNZD", side="sell", amount=str(amount), amountasquotecurrency=True, recipient=utility.bank_account, customrecipientparams=recipient_params)
+    json_body = json.dumps(body)
+    # create hmac sha256 signature of body
+    signature = hmac_sha256(app.config["BRONZE_API_SECRET"], json_body)
+    # create request
+    url = app.config["BRONZE_ADDRESS"] + "/api/v1/BrokerCreate"
+    headers = {"Content-Type": "application/json", "X-Signature": signature}
+    print(":: requesting %s.." % url)
+    r = requests.post(url, headers=headers, data=json_body)
+    try:
+        r.raise_for_status()
+    except:
+        print("ERROR: response http status %d (%s)" % (r.status_code, r.content))
+        return None
+    # extract token and create invoice
+    body = r.json()
+    print(body)
+    broker_token = body["token"]
+    amount_cents = int(decimal.Decimal(body["amountSend"]) * 100)
+    amount_cents_nzd = int(decimal.Decimal(body["amountReceive"]) * 100)
+    invoice = Invoice(amount_cents, amount_cents_nzd, broker_token)
+    db.session.add(invoice)
+    db.session.commit()
+    return invoice
+
 @app.route("/utility", methods=["GET", "POST"])
 def utility():
     STATE_CREATE = "create"
     STATE_CHECK = "check"
-    STATE_SUBMIT = "submit"
 
     utility_id = int(request.args.get("utility"))
     utility = Utility.from_id(db.session, utility_id)
@@ -241,11 +279,23 @@ def utility():
             if not error:
                 state = STATE_CHECK
         elif state == STATE_CHECK:
-            state = STATE_SUBMIT
-            return "TODO: create invoice for %s NZD to %s (%s)" % (amount, utility.bank_account, json.dumps(bank_transaction_details(utility, values)))
+            details = bank_transaction_details(utility, values)
+            invoice = create_invoice(utility, details, amount)
+            if invoice:
+                return redirect(url_for("invoice", token=invoice.token))
+            else:
+                error = "failed to create invoice"
         return render_template("utility.html", utility=utility, state=state, amount=amount, values=values, error=error)
     else:
         return render_template("utility.html", utility=utility, state=STATE_CREATE, values=werkzeug.MultiDict())
+
+@app.route("/invoice")
+def invoice():
+    token = request.args.get("token")
+    invoice = Invoice.from_token(db.session, token)
+    if not invoice:
+        return abort(404)
+    return render_template("invoice.html", invoice=invoice)
 
 if __name__ == "__main__":
     setup_logging(logging.DEBUG)

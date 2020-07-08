@@ -1,0 +1,20 @@
+<html>
+    <body>
+        <div>
+            {% if state == "check" %}
+            <div style="background-color: orange">
+                Check the values are correct
+            </div>
+            {% endif %}
+            {% if error %}
+            <div style="background-color: red">
+                {{error}}
+            </div>
+            {% endif %}
+            <div>token: {{invoice.token}}</div>
+            <div>amount zap cents: {{invoice.amount}}</div>
+            <div>amount nzd cents: {{invoice.amount_nzd}}</div>
+            <div>bronze broker token: {{invoice.bronze_broker_token}}</div>
+        </div>
+    </body>
+</html>
