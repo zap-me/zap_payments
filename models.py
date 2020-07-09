@@ -176,9 +176,8 @@ def checking_allowed(form, field):
     mandatory = ['label', 'description', 'type', 'target']
     json_data = json.loads(field.data)
     for row in json_data:
-        for k,v in row:
-            if any(x not in k for x in mandatory):
-                raise ValidationError('{} does not exist on row {}'.format(k, row))
+        if any(x not in row.keys() for x in mandatory):
+            raise ValidationError('{} does not exist on row {}'.format(row.keys(), row))
 
 class ReloadingIterator:
     def __init__(self, iterator_factory):
