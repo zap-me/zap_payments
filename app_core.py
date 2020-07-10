@@ -19,9 +19,11 @@ else:
     app.config["SQLALCHEMY_ECHO"] = False
 app.config["TESTNET"] = True
 app.config["BRONZE_ADDRESS"] = "https://test.bronze.exchange"
+app.config["ASSET_ID"] = "CgUrFtinLXEbJwJVjwwcppk4Vpz1nMmR3H5cQaDcUcfe"
 if os.getenv("PRODUCTION"):
     app.config["TESTNET"] = False
     app.config["BRONZE_ADDRESS"] = "https://bronze.exchange"
+    app.config["ASSET_ID"] = "9R3iLi4qGLVWKc16Tg98gmRvgg1usGEYd7SgC1W5D6HB"
 if os.getenv("DATABASE_URL"):
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}

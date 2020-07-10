@@ -8,6 +8,7 @@ import decimal
 import hmac
 import hashlib
 import base64
+import io
 
 from flask import url_for, redirect, render_template, request, abort, jsonify
 from flask_security.utils import encrypt_password
@@ -15,6 +16,8 @@ from flask_socketio import Namespace, emit, join_room, leave_room
 from flask_security import current_user
 import werkzeug
 import requests
+import qrcode
+import qrcode.image.svg
 
 from app_core import app, db, socketio
 from models import security, user_datastore, Role, User, Invoice, Utility
@@ -220,52 +223,80 @@ def hmac_sha256(secret, msg):
     sig = hmac.new(bytes(secret, 'latin-1'), msg=bytes(msg, 'latin-1'), digestmod=hashlib.sha256).digest()
     return base64.b64encode(sig)
 
-def create_invoice(utility, details, amount):
-    # init bank recipient params
-    reference = details["reference"] if "reference" in details else ""
-    code = details["code"] if "code" in details else ""
-    particulars = details["particulars"] if "particulars" in details else ""
-    # create request body
-    recipient_params = dict(reference=reference, code=code, particulars=particulars)
-    body = dict(key=app.config["BRONZE_API_KEY"], nonce=int(time.time()), market="ZAPNZD", side="sell", amount=str(amount), amountasquotecurrency=True, recipient=utility.bank_account, customrecipientparams=recipient_params)
-    json_body = json.dumps(body)
+def bronze_request(endpoint, params):
+    params["key"] = app.config["BRONZE_API_KEY"]
+    params["nonce"] = int(time.time())
+    body = json.dumps(params)
     # create hmac sha256 signature of body
-    signature = hmac_sha256(app.config["BRONZE_API_SECRET"], json_body)
+    signature = hmac_sha256(app.config["BRONZE_API_SECRET"], body)
     # create request
-    url = app.config["BRONZE_ADDRESS"] + "/api/v1/BrokerCreate"
     headers = {"Content-Type": "application/json", "X-Signature": signature}
+    url = app.config["BRONZE_ADDRESS"] + "/api/v1/" + endpoint
     print(":: requesting %s.." % url)
-    r = requests.post(url, headers=headers, data=json_body)
+    r = requests.post(url, headers=headers, data=body)
     try:
         r.raise_for_status()
     except:
         print("ERROR: response http status %d (%s)" % (r.status_code, r.content))
         return None
+    print(r.status_code)
+    print(r.content)
+    return r
+
+def invoice_create(utility, details, amount):
+    # init bank recipient params
+    reference = details["reference"] if "reference" in details else ""
+    code = details["code"] if "code" in details else ""
+    particulars = details["particulars"] if "particulars" in details else ""
+    # request params
+    recipient_params = dict(reference=reference, code=code, particulars=particulars)
+    params = dict(market="ZAPNZD", side="sell", amount=str(amount), amountasquotecurrency=True, recipient=utility.bank_account, customrecipientparams=recipient_params)
+    # create request
+    r = bronze_request("BrokerCreate", params)
+    if not r:
+        return None
     # extract token and create invoice
     body = r.json()
-    print(body)
     broker_token = body["token"]
-    amount_cents = int(decimal.Decimal(body["amountSend"]) * 100)
+    amount_cents_zap = int(decimal.Decimal(body["amountSend"]) * 100)
     amount_cents_nzd = int(decimal.Decimal(body["amountReceive"]) * 100)
-    invoice = Invoice(amount_cents, amount_cents_nzd, broker_token)
+    invoice = Invoice(amount_cents_nzd, amount_cents_zap, broker_token)
     db.session.add(invoice)
     db.session.commit()
     return invoice
 
+def bronze_order_status(invoice):
+    # create request body
+    params = dict(token=invoice.bronze_broker_token)
+    # create request
+    r = bronze_request("BrokerStatus", params)
+    if not r:
+        return None
+    return r.json()
+
+def bronze_order_accept(invoice):
+    # create request body
+    params = dict(token=invoice.bronze_broker_token)
+    # create request
+    r = bronze_request("BrokerAccept", params)
+    if not r:
+        return None
+    return r.json()
+
 @app.route("/utility", methods=["GET", "POST"])
 def utility():
-    STATE_CREATE = "create"
-    STATE_CHECK = "check"
+    STATUS_CREATE = "create"
+    STATUS_CHECK = "check"
 
     utility_id = int(request.args.get("utility"))
     utility = Utility.from_id(db.session, utility_id)
     Utility.jsonify_fields_descriptions([utility])
     if request.method == "POST":
-        state = request.form.get("zbp_state")
+        status = request.form.get("zbp_state")
         amount = request.form.get("zbp_amount")
         values = request.form
         error = None
-        if state == STATE_CREATE:
+        if status == STATUS_CREATE:
             try:
                 # check amount
                 amount = decimal.Decimal(amount)
@@ -277,25 +308,54 @@ def utility():
             except:
                 error = "amount must be valid number"
             if not error:
-                state = STATE_CHECK
-        elif state == STATE_CHECK:
+                status = STATUS_CHECK
+        elif status == STATUS_CHECK:
             details = bank_transaction_details(utility, values)
-            invoice = create_invoice(utility, details, amount)
+            invoice = invoice_create(utility, details, amount)
             if invoice:
                 return redirect(url_for("invoice", token=invoice.token))
             else:
                 error = "failed to create invoice"
-        return render_template("utility.html", utility=utility, state=state, amount=amount, values=values, error=error)
+        return render_template("utility.html", utility=utility, status=status, amount=amount, values=values, error=error)
     else:
-        return render_template("utility.html", utility=utility, state=STATE_CREATE, values=werkzeug.MultiDict())
+        return render_template("utility.html", utility=utility, status=STATUS_CREATE, values=werkzeug.MultiDict())
 
-@app.route("/invoice")
+def qrcode_svg_create(data):
+    factory = qrcode.image.svg.SvgPathImage
+    img = qrcode.make(data, image_factory=factory)
+    output = io.BytesIO()
+    img.save(output)
+    svg = output.getvalue().decode('utf-8')
+    return svg
+
+@app.route("/invoice", methods=["GET", "POST"])
 def invoice():
+    error = None
+    qrcode_svg = None
     token = request.args.get("token")
     invoice = Invoice.from_token(db.session, token)
     if not invoice:
         return abort(404)
-    return render_template("invoice.html", invoice=invoice)
+    order = bronze_order_status(invoice)
+    if not order:
+        error = "unable to get invoice status"
+        return render_template("invoice.html", invoice=invoice, error=error)
+    if order["status"] == "Expired":
+        error = "invoice expired"
+        return render_template("invoice.html", invoice=invoice, error=error)
+    if request.method == "POST":
+        if order["status"] == "Created":
+            res = bronze_order_accept(invoice)
+            if res:
+                order = res
+    if order["status"] == "Ready":
+        invoice_id = order["invoiceId"]
+        payment_address = order["paymentAddress"]
+        attachment = json.dumps(dict(invoice_id=invoice_id))
+        url = "waves://{}?asset={}&amount={}&attachment={}".format(payment_address, app.config["ASSET_ID"], invoice.amount_zap, attachment)
+        qrcode_svg = qrcode_svg_create(url)
+        #TODO: other statuses..
+    return render_template("invoice.html", invoice=invoice, order=order, error=error, qrcode_svg=qrcode_svg)
 
 if __name__ == "__main__":
     setup_logging(logging.DEBUG)

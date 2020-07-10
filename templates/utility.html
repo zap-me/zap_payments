@@ -1,7 +1,7 @@
 <html>
     <body>
         <div>
-            {% if state == "check" %}
+            {% if status == "check" %}
             <div style="background-color: orange">
                 Check the values are correct
             </div>
@@ -11,12 +11,14 @@
                 {{error}}
             </div>
             {% endif %}
-            {% set readonly = "readonly" if state == "check" else "" %}
+            {% set readonly = "readonly" if status == "check" else "" %}
+            <small>
             <div>{{utility.name}}</div>
             <div>{{utility.description}}</div>
             <div>{{utility.bank_account}}</div>
+            </small>
             <form method="post">
-                <input type="hidden" name="zbp_state" value="{{state}}"/>
+                <input type="hidden" name="zbp_state" value="{{status}}"/>
                 <label>Amount NZD</label>
                 <input name="zbp_amount" type="number" value="{{amount}}" step="0.01" {{readonly}}/>
                 </br>
@@ -28,7 +30,7 @@
                 <input name="{{field['label']}}" type="{{field['type']}}" value="{{values[field['label']]}}" {{readonly}} {{min}} {{max}} {{minlength}} />
                 </br>
                 {% endfor %}
-                <input type="submit" value="{{'Submit' if state == 'create' else 'The values are correct'}}"/>
+                <input type="submit" value="{{'Submit' if status == 'create' else 'The values are correct'}}"/>
             </form>
         </div>
     </body>

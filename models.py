@@ -72,10 +72,10 @@ class InvoiceSchema(Schema):
     amount = fields.Integer()
     amount_zap = fields.Integer()
     bronze_broker_token = fields.String()
-    state = fields.String()
 
 class Invoice(db.Model):
-    STATE_CREATED = "created"
+    STATUS_CREATED = "Created"
+    STATUS_READY = "Ready"
 
     id = db.Column(db.Integer, primary_key=True)
     date = db.Column(db.DateTime(), nullable=False)
@@ -85,14 +85,12 @@ class Invoice(db.Model):
     amount = db.Column(db.Integer, nullable=False)
     amount_zap = db.Column(db.Integer, nullable=False)
     bronze_broker_token = db.Column(db.String(255), nullable=False)
-    state = db.Column(db.String(255), nullable=False)
 
     def __init__(self, amount, amount_zap, bronze_broker_token):
         self.generate_defaults()
         self.amount = amount
         self.amount_zap = amount_zap
         self.bronze_broker_token = bronze_broker_token
-        self.state = self.STATE_CREATED
 
     def generate_defaults(self):
         self.date = datetime.datetime.now()
