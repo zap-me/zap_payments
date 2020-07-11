@@ -351,7 +351,7 @@ def invoice():
     if order["status"] == "Ready":
         invoice_id = order["invoiceId"]
         payment_address = order["paymentAddress"]
-        attachment = json.dumps(dict(invoice_id=invoice_id))
+        attachment = json.dumps(dict(InvoiceId=invoice_id))
         url = "waves://{}?asset={}&amount={}&attachment={}".format(payment_address, app.config["ASSET_ID"], invoice.amount_zap, attachment)
         qrcode_svg = qrcode_svg_create(url)
         #TODO: other statuses..
