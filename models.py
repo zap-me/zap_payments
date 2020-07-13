@@ -169,6 +169,45 @@ def _format_amount(view, context, model, name):
     if name == 'amount_zap':
         return round((model.amount_zap / 100),2)
 
+def fields_description_check(form, field):
+    TYPE = 'type'
+    TARGET = 'target'
+    mandatory = ['label', 'description', TYPE, TARGET]
+    valid_types = ['number', 'text']
+    valid_targets = ['reference', 'code', 'particulars']
+    def target_check(target):
+        if target not in valid_targets:
+            raise ValidationError('"{}" is not one of "{}"'.format(target, valid_targets))
+    def target_check_list(targets):
+        if not targets:
+            raise ValidationError('{} "{}" is empty'.format(TARGET, targets))
+        for target in targets:
+            target_check(target)
+    valid_target_types = [(str, target_check), (list, target_check_list)]
+    try:
+        json_data = json.loads(field.data)
+    except:
+        raise ValidationError('Invalid JSON')
+    if not isinstance(json_data, list):
+        raise ValidationError('Root object is not a list/array')
+    for item in json_data:
+        if not isinstance(item, dict):
+            raise ValidationError('"{}" is not a dictionary'.format(item))
+        for param in mandatory:
+            if param not in item:
+                raise ValidationError('"{}" is missing "{}" parameter'.format(item, param))
+        if item[TYPE] not in valid_types:
+            raise ValidationError('"{}" is not one of "{}"'.format(TYPE, valid_types))
+        target = item[TARGET]
+        valid_target_type = False
+        for target_type, target_check_fn in valid_target_types:
+            if isinstance(target, target_type):
+                valid_target_type = True
+                target_check_fn(target)
+        if not valid_target_type:
+            lst = [target_type for target_type, target_check_fn in valid_target_types]
+            raise ValidationError('"{}" is not one of "{}"'.format(TARGET, lst))
+
 class ReloadingIterator:
     def __init__(self, iterator_factory):
         self.iterator_factory = iterator_factory
@@ -222,3 +261,7 @@ class UtilityModelView(RestrictedModelView):
             'style': 'font-family: monospace;'
         }
     }
+
+    form_args = dict(
+        fields_description = dict(validators=[fields_description_check])
+    )
