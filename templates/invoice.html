@@ -18,16 +18,81 @@
                         <input type="submit" value="Yes I have {{zap}} ZAP ready" />
                     </form>
                 {% elif order["status"] == invoice.STATUS_READY %}
-                    {{qrcode_svg | safe}}
+                    {% if invoice.tx_seen %}
+                        Transaction received
+                    {% else %}
+                        {{qrcode_svg | safe}}
+                    {% endif %}
                     <br/>
-                    expiry: {{order["expiry"]}}
+                    expiry: <span id="expiry"></span>
                 {% endif %}
                 <small>
                 <div>Token: {{invoice.token}}</div>
+                <div>Tx Seen: {{invoice.tx_seen}}</div>
                 <div>Bronze Token: {{invoice.bronze_broker_token}}</div>
-                <div>Status: {{order["status"]}}</div>
+                <div>Bronce Order Status: {{order["status"]}}</div>
                 </small>
             {% endif %}
         </div>
+
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
+        <script>
+            function reloadNoPost() {
+                window.location = window.location.href.split("#")[0];
+            }
+
+            function docReady(fn) {
+                // see if DOM is already available
+                if (document.readyState === "complete" || document.readyState === "interactive") {
+                    // call on next available tick
+                    setTimeout(fn, 1);
+                } else {
+                    document.addEventListener("DOMContentLoaded", fn);
+                }
+            }
+
+            docReady(function() {
+                // expiry countdown
+                var expiry = document.getElementById("expiry");
+                if (expiry) {
+                    var countDownTimer = setInterval(function() {
+                        var countDownDate = new Date({{order["expiry"] * 1000}}).getTime();
+                        var now = new Date().getTime();
+                        var distance = countDownDate - now;
+                        var minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                        var seconds = Math.floor((distance % (1000 * 60)) / 1000);
+                        expiry.innerHTML = minutes + "m " + seconds + "s ";
+                        if (distance < 0) {
+                            clearInterval(countDownTimer);
+                            expiry.innerHTML = "EXPIRED";
+                        }
+                    }, 1000);
+                }
+
+                // socket.io
+                setTimeout(function() {
+                    //const socket = io(document.location.scheme + document.location.host + "/");
+                    const socket = io("/");
+
+                    socket.on('connect', () => {
+                        console.log("socket connected");
+                    });
+                    socket.on('disconnect', () => {
+                        console.log("socket disconnected");
+                    });
+                    socket.on('update', (invoice) => {
+                        console.log("update: " + invoice);
+                    });
+                    socket.on('tx', (tx) => {
+                        console.log("tx: " + tx);
+                        reloadNoPost();
+                    });
+                    socket.on('info', (msg) => {
+                        console.log("info: " + msg);
+                    });
+                    socket.emit('invoice', '{{invoice.token}}');
+                }, 100);
+            });
+        </script>
     </body>
 </html>

@@ -19,7 +19,7 @@ import requests
 import qrcode
 import qrcode.image.svg
 
-from app_core import app, db, socketio
+from app_core import app, db, socketio, aw
 from models import security, user_datastore, Role, User, Invoice, Utility
 import admin
 from utils import check_hmac_auth, generate_key
@@ -86,6 +86,83 @@ def check_auth(token, nonce, sig, body):
     # update invoice nonce
     db.session.commit()
     return True, "", invoice
+
+def hmac_sha256(secret, msg):
+    sig = hmac.new(bytes(secret, 'latin-1'), msg=bytes(msg, 'latin-1'), digestmod=hashlib.sha256).digest()
+    return base64.b64encode(sig)
+
+def bronze_request(endpoint, params):
+    params["key"] = app.config["BRONZE_API_KEY"]
+    params["nonce"] = int(time.time())
+    body = json.dumps(params)
+    # create hmac sha256 signature of body
+    signature = hmac_sha256(app.config["BRONZE_API_SECRET"], body)
+    # create request
+    headers = {"Content-Type": "application/json", "X-Signature": signature}
+    url = app.config["BRONZE_ADDRESS"] + "/api/v1/" + endpoint
+    print(":: requesting %s.." % url)
+    r = requests.post(url, headers=headers, data=body)
+    try:
+        r.raise_for_status()
+    except:
+        print("ERROR: response http status %d (%s)" % (r.status_code, r.content))
+        return None
+    print(r.status_code)
+    print(r.content)
+    return r
+
+def bronze_order_status(invoice):
+    # create request body
+    params = dict(token=invoice.bronze_broker_token)
+    # create request
+    r = bronze_request("BrokerStatus", params)
+    if not r:
+        return None
+    return r.json()
+
+def bronze_order_accept(invoice):
+    # create request body
+    params = dict(token=invoice.bronze_broker_token)
+    # create request
+    r = bronze_request("BrokerAccept", params)
+    if not r:
+        return None
+    return r.json()
+
+def transfer_tx_callback(tokens, tx):
+    txt = json.dumps(tx)
+    print("transfer_tx_callback: tx %s" % txt)
+    for token in tokens:
+        invoice = Invoice.from_token(db.session, token)
+        if invoice:
+            order = bronze_order_status(invoice)
+            if order:
+                try:
+                    attachment = json.loads(tx["attachment"])
+                    invoice_id = attachment["InvoiceId"]
+                    amount_zap = int(tx["amount"] * 100)
+                    if invoice_id == order["invoiceId"] and amount_zap >= invoice.amount_zap:
+                        print("marking invoice (%s) as seen" % token)
+                        invoice.tx_seen = True
+                        db.session.add(invoice)
+                        db.session.commit()
+                except:
+                    pass
+        print("sending 'tx' event to room %s" % token)
+        socketio.emit("tx", txt, json=True, room=token)
+
+def qrcode_svg_create(data):
+    factory = qrcode.image.svg.SvgPathImage
+    img = qrcode.make(data, image_factory=factory)
+    output = io.BytesIO()
+    img.save(output)
+    svg = output.getvalue().decode('utf-8')
+    return svg
+
+@app.before_first_request
+def start_address_watcher():
+    aw.transfer_tx_callback = transfer_tx_callback
+    aw.start()
 
 def bad_request(message):
     response = jsonify({"message": message})
@@ -163,6 +240,13 @@ class SocketIoNamespace(Namespace):
             ws_invoices[auth["token"]] = request.sid
             ws_sids[request.sid] = auth["token"]
 
+    def on_invoice(self, token):
+        print("join room for invoice: %s" % token)
+        join_room(token)
+        ws_invoices[token] = request.sid
+        ws_sids[request.sid] = token
+        emit("info", "joined room for invoice: %s" % token)
+
     def on_disconnect(self):
         print("disconnect sid: %s" % request.sid)
         if request.sid in ws_sids:
@@ -219,30 +303,6 @@ def bank_transaction_details(utility, values):
             details[target] = value
     return details
 
-def hmac_sha256(secret, msg):
-    sig = hmac.new(bytes(secret, 'latin-1'), msg=bytes(msg, 'latin-1'), digestmod=hashlib.sha256).digest()
-    return base64.b64encode(sig)
-
-def bronze_request(endpoint, params):
-    params["key"] = app.config["BRONZE_API_KEY"]
-    params["nonce"] = int(time.time())
-    body = json.dumps(params)
-    # create hmac sha256 signature of body
-    signature = hmac_sha256(app.config["BRONZE_API_SECRET"], body)
-    # create request
-    headers = {"Content-Type": "application/json", "X-Signature": signature}
-    url = app.config["BRONZE_ADDRESS"] + "/api/v1/" + endpoint
-    print(":: requesting %s.." % url)
-    r = requests.post(url, headers=headers, data=body)
-    try:
-        r.raise_for_status()
-    except:
-        print("ERROR: response http status %d (%s)" % (r.status_code, r.content))
-        return None
-    print(r.status_code)
-    print(r.content)
-    return r
-
 def invoice_create(utility, details, amount):
     # init bank recipient params
     reference = details["reference"] if "reference" in details else ""
@@ -264,24 +324,6 @@ def invoice_create(utility, details, amount):
     db.session.add(invoice)
     db.session.commit()
     return invoice
-
-def bronze_order_status(invoice):
-    # create request body
-    params = dict(token=invoice.bronze_broker_token)
-    # create request
-    r = bronze_request("BrokerStatus", params)
-    if not r:
-        return None
-    return r.json()
-
-def bronze_order_accept(invoice):
-    # create request body
-    params = dict(token=invoice.bronze_broker_token)
-    # create request
-    r = bronze_request("BrokerAccept", params)
-    if not r:
-        return None
-    return r.json()
 
 @app.route("/utility", methods=["GET", "POST"])
 def utility():
@@ -320,14 +362,6 @@ def utility():
     else:
         return render_template("utility.html", utility=utility, status=STATUS_CREATE, values=werkzeug.MultiDict())
 
-def qrcode_svg_create(data):
-    factory = qrcode.image.svg.SvgPathImage
-    img = qrcode.make(data, image_factory=factory)
-    output = io.BytesIO()
-    img.save(output)
-    svg = output.getvalue().decode('utf-8')
-    return svg
-
 @app.route("/invoice", methods=["GET", "POST"])
 def invoice():
     error = None
@@ -338,23 +372,26 @@ def invoice():
         return abort(404)
     order = bronze_order_status(invoice)
     if not order:
-        error = "unable to get invoice status"
-        return render_template("invoice.html", invoice=invoice, error=error)
-    if order["status"] == "Expired":
+        return abort(400)
+    if order["status"] == Invoice.STATUS_EXPIRED:
         error = "invoice expired"
-        return render_template("invoice.html", invoice=invoice, error=error)
+        return render_template("invoice.html", invoice=invoice, order=order, error=error)
     if request.method == "POST":
-        if order["status"] == "Created":
+        if order["status"] == Invoice.STATUS_CREATED:
             res = bronze_order_accept(invoice)
             if res:
                 order = res
-    if order["status"] == "Ready":
+    if order["status"] == Invoice.STATUS_READY:
+        # watch address
+        print("watching address %s for %s" % (order["paymentAddress"], token))
+        aw.watch(order["paymentAddress"], token)
+        # prepare template
         invoice_id = order["invoiceId"]
         payment_address = order["paymentAddress"]
         attachment = json.dumps(dict(InvoiceId=invoice_id))
         url = "waves://{}?asset={}&amount={}&attachment={}".format(payment_address, app.config["ASSET_ID"], invoice.amount_zap, attachment)
         qrcode_svg = qrcode_svg_create(url)
-        #TODO: other statuses..
+    #TODO: other statuses..
     return render_template("invoice.html", invoice=invoice, order=order, error=error, qrcode_svg=qrcode_svg)
 
 if __name__ == "__main__":
@@ -384,3 +421,6 @@ if __name__ == "__main__":
         port = int(os.environ.get("PORT", 5000))
         print("binding to port: %d" % port)
         socketio.run(app, host="0.0.0.0", port=port)
+        # stop addresswatcher
+        if aw:
+            aw.kill()

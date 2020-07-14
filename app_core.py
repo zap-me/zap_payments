@@ -6,6 +6,8 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_mail_sendgrid import MailSendGrid
 from flask_socketio import SocketIO
 
+from addresswatcher import AddressWatcher
+
 # Create Flask application
 app = Flask(__name__)
 app.config.from_pyfile("config.py")
@@ -40,3 +42,5 @@ if os.getenv("BRONZE_API_SECRET"):
 db = SQLAlchemy(app)
 mail = MailSendGrid(app)
 socketio = SocketIO(app)
+
+aw = AddressWatcher(app.config["TESTNET"])
