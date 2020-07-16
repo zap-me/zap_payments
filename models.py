@@ -4,6 +4,7 @@ import decimal
 import logging
 import io
 import json
+import jsbeautifier
 
 from flask import redirect, url_for, request, abort, flash, has_app_context, g
 from flask_admin import expose
@@ -212,6 +213,11 @@ def fields_description_check(form, field):
             lst = [target_type for target_type, target_check_fn in valid_target_types]
             raise ValidationError('"{}" is not one of "{}"'.format(TARGET, lst))
 
+class _json_beautifier(vie, context, model, name):
+    if name == 'fields_description':
+        json_format_beaut = jsbeautifier.beautify(fields_description)
+        return json_format_beaut
+
 class ReloadingIterator:
     def __init__(self, iterator_factory):
         self.iterator_factory = iterator_factory
@@ -269,3 +275,7 @@ class UtilityModelView(RestrictedModelView):
     form_args = dict(
         fields_description = dict(validators=[fields_description_check])
     )
+
+    column_formatters = {
+        'fields description': _json_format_beaut
+    }
