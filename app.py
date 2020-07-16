@@ -286,9 +286,20 @@ def utilities():
     utilities = Utility.all_alphabetical(db.session)
     return render_template("utilities.html", utilities=utilities)
 
-def validate_values(fields, values):
-    for field in fields:
+def validate_amount(amount):
+    try:
+        # check amount
+        amount = decimal.Decimal(amount)
+    except:
+        return "amount must be a valid number"
+    if amount <= 0:
+        return "amount must be greater then zero"
+    return None
+
+def validate_values(bank_description_item, values):
+    for field in bank_description_item["fields"]:
         name = field["label"]
+        print(name)
         value = values[name]
         if not value and (not "allow_empty" in field or not field["allow_empty"]):
             return "please enter a value for '%s'" % name
@@ -309,9 +320,9 @@ def validate_values(fields, values):
             return "value for '%s' is too long" % name
     return None
 
-def bank_transaction_details(utility, values):
-    details = {}
-    for field in utility.fields_description_json:
+def bank_transaction_details(bank_description_item, values):
+    details = dict(bank_account = bank_description_item["account_number"])
+    for field in bank_description_item["fields"]:
         target = field["target"]
         value = values[field["label"]]
         if isinstance(target, list):
@@ -323,12 +334,13 @@ def bank_transaction_details(utility, values):
 
 def invoice_create(utility, details, amount):
     # init bank recipient params
+    bank_account = details["bank_account"]
     reference = details["reference"] if "reference" in details else ""
     code = details["code"] if "code" in details else ""
     particulars = details["particulars"] if "particulars" in details else ""
     # request params
     recipient_params = dict(reference=reference, code=code, particulars=particulars)
-    params = dict(market="ZAPNZD", side="sell", amount=str(amount), amountasquotecurrency=True, recipient=utility.bank_account, customrecipientparams=recipient_params)
+    params = dict(market="ZAPNZD", side="sell", amount=str(amount), amountasquotecurrency=True, recipient=bank_account, customrecipientparams=recipient_params)
     # create request
     r = bronze_request("BrokerCreate", params)
     if not r:
@@ -350,33 +362,32 @@ def utility():
 
     utility_id = int(request.args.get("utility"))
     utility = Utility.from_id(db.session, utility_id)
-    Utility.jsonify_fields_descriptions([utility])
+    Utility.jsonify_bank_descriptions([utility])
     if request.method == "POST":
+        bank_index = int(request.form.get("zbp_bank_index"))
+        bank_desc = utility.bank_description_json[bank_index]
         status = request.form.get("zbp_state")
         amount = request.form.get("zbp_amount")
         values = request.form
         error = None
         if status == STATUS_CREATE:
-            try:
-                # check amount
-                amount = decimal.Decimal(amount)
-                if amount <= 0:
-                    error = "amount must be greater then zero"
-                else:
-                    # check field values
-                    error = validate_values(utility.fields_description_json, values)
-            except:
-                error = "amount must be valid number"
+            error = validate_amount(amount)
+            if not error:
+                error = validate_values(bank_desc, values)
             if not error:
                 status = STATUS_CHECK
         elif status == STATUS_CHECK:
-            details = bank_transaction_details(utility, values)
-            invoice = invoice_create(utility, details, amount)
-            if invoice:
-                return redirect(url_for("invoice", token=invoice.token))
-            else:
-                error = "failed to create invoice"
-        return render_template("utility.html", utility=utility, status=status, amount=amount, values=values, error=error)
+            error = validate_amount(amount)
+            if not error:
+                error = validate_values(bank_desc, values)
+            if not error:
+                details = bank_transaction_details(bank_desc, values)
+                invoice = invoice_create(utility, details, amount)
+                if invoice:
+                    return redirect(url_for("invoice", token=invoice.token))
+                else:
+                    error = "failed to create invoice"
+        return render_template("utility.html", utility=utility, selected_bank_name=bank_desc["name"], status=status, amount=amount, values=values, error=error)
     else:
         return render_template("utility.html", utility=utility, status=STATUS_CREATE, values=werkzeug.MultiDict())
 
