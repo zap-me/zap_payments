@@ -9,8 +9,9 @@ import hmac
 import hashlib
 import base64
 import io
+import re
 
-from flask import url_for, redirect, render_template, request, abort, jsonify
+from flask import url_for, redirect, render_template, request, abort, jsonify, Markup
 from flask_security.utils import encrypt_password
 from flask_socketio import Namespace, emit, join_room, leave_room
 from flask_security import current_user
@@ -168,6 +169,23 @@ def bad_request(message):
     response = jsonify({"message": message})
     response.status_code = 400
     return response
+
+def find_urls(string): 
+    # findall() has been used  
+    # with valid conditions for urls in string 
+    regex = r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’]))"
+    url = re.findall(regex,string)       
+    return [x[0] for x in url] 
+
+@app.template_filter("urls_to_links")
+def urls_to_links(s):
+    urls = find_urls(s)
+    if not urls:
+        return s
+    for url in urls:
+        link = '<a href="{}" target="_blank">{}</a>'.format(url, url)
+        s = s.replace(url, link)
+    return Markup(s)
 
 #
 # Flask views

@@ -14,7 +14,7 @@
             {% set readonly = "readonly" if status == "check" else "" %}
             <small>
             <div>{{utility.name}}</div>
-            <div>{{utility.description}}</div>
+            <div>{{utility.description | urls_to_links}}</div>
             <div>{{utility.bank_account}}</div>
             </small>
             <form method="post">
