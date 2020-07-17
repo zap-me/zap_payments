@@ -77,6 +77,10 @@ class InvoiceSchema(Schema):
 class Invoice(db.Model):
     STATUS_CREATED = "Created"
     STATUS_READY = "Ready"
+    STATUS_INCOMING = "Incomming" #sp :(
+    STATUS_CONFIRMED = "Confirmed"
+    STATUS_PAYOUTWAIT = "PayoutWait"
+    STATUS_SENT = "Sent"
     STATUS_EXPIRED = "Expired"
 
     id = db.Column(db.Integer, primary_key=True)

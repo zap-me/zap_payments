@@ -20,7 +20,7 @@ import requests
 import qrcode
 import qrcode.image.svg
 
-from app_core import app, db, socketio, aw
+from app_core import app, db, socketio, aw, timer
 from models import security, user_datastore, Role, User, Invoice, Utility
 import admin
 from utils import check_hmac_auth, generate_key
@@ -152,6 +152,16 @@ def transfer_tx_callback(tokens, tx):
         print("sending 'tx' event to room %s" % token)
         socketio.emit("tx", txt, json=True, room=token)
 
+def timer_callback():
+    print("timer_callback()..")
+    for token in ws_invoices.keys():
+        print("timer_callback: token: {}".format(token))
+        invoice = Invoice.from_token(db.session, token)
+        if invoice:
+            order = bronze_order_status(invoice)
+            if order:
+                socketio.emit("order_status", order["status"], room=token)
+
 def qrcode_svg_create(data):
     factory = qrcode.image.svg.SvgPathImage
     img = qrcode.make(data, image_factory=factory)
@@ -164,6 +174,8 @@ def qrcode_svg_create(data):
 def start_address_watcher():
     aw.transfer_tx_callback = transfer_tx_callback
     aw.start()
+    timer.callback = timer_callback
+    timer.start()
 
 def bad_request(message):
     response = jsonify({"message": message})
@@ -453,3 +465,6 @@ if __name__ == "__main__":
         # stop addresswatcher
         if aw:
             aw.kill()
+        # stop timer
+        if timer:
+            timer.kill()

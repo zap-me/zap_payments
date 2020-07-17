@@ -9,13 +9,13 @@
 
     {% if order %}
         {% set zap = '{0:0.2f}'.format(invoice.amount_zap/100.0) %}
-        {% if order["status"] == invoice.STATUS_CREATED and not error %}
+        {% if order.status == invoice.STATUS_CREATED %}
     <div class="alert alert-warning" role="alert">
         Check ZAP amount is ok
     </div>
         {% endif %}
     <div class="card">
-        {% if order["status"] == invoice.STATUS_CREATED and not error %}
+        {% if order.status == invoice.STATUS_CREATED %}
         <div class="card-header">
             Required amount {{zap}} ZAP
         </div>
@@ -25,17 +25,33 @@
                 <button class="btn btn-lg btn-primary btn-block" type="submit">Yes I have {{zap}} ZAP ready</button>
             </form>
         </div>
-        {% elif order["status"] == invoice.STATUS_READY %}
+        {% elif order.status == invoice.STATUS_READY %}
         <div class="card-body">
             {% if invoice.tx_seen %}
-                Transaction received
+                Transaction seen, waiting for exchange backend to process it..
             {% else %}
                 {{qrcode_svg | safe}}
             {% endif %}
             <br/>
-            expiry: <span id="expiry"></span>
+            Expiry: <span id="expiry"></span>
         </div>
-        {% elif order["status"] == invoice.STATUS_EXPIRED %}
+        {% elif order.status == invoice.STATUS_INCOMING %}
+        <div class="card-body">
+            Transaction registered, waiting to confirm..
+        </div>
+        {% elif order.status == invoice.STATUS_CONFIRMED %}
+        <div class="card-body">
+            Transaction confirmed..
+        </div>
+        {% elif order.status == invoice.STATUS_PAYOUTWAIT %}
+        <div class="card-body">
+            Transaction confirmed. Waiting for bank payment to be made..
+        </div>
+        {% elif order.status == invoice.STATUS_PAYOUTWAIT %}
+        <div class="card-body">
+            Transaction confirmed. Bank payment made.
+        </div>
+        {% elif order.status == invoice.STATUS_EXPIRED %}
         <div class="card-body">
             EXPIRED
         </div>
@@ -45,7 +61,7 @@
                 <div>Token: {{invoice.token}}</div>
                 <div>Tx Seen: {{invoice.tx_seen}}</div>
                 <div>Bronze Token: {{invoice.bronze_broker_token}}</div>
-                <div>Bronce Order Status: {{order["status"]}}</div>
+                <div>Bronze Order Status: {{order.status}}<div>
             </small>
         </div>
     </div>
@@ -104,6 +120,14 @@
                 socket.on('tx', (tx) => {
                     console.log("tx: " + tx);
                     reloadNoPost();
+                });
+                socket.on('order_status', (status) => {
+                    console.log("order_status: " + status);
+                    {% if order %}
+                    if ("{{order.status}}" != status) {
+                        reloadNoPost();
+                    }
+                    {% endif %}
                 });
                 socket.on('info', (msg) => {
                     console.log("info: " + msg);
