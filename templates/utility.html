@@ -1,27 +1,34 @@
-<html>
-    <body>
-        <div>
-            {% if status == "check" %}
-            <div style="background-color: orange">
-                Check the values are correct
-            </div>
-            <br/>
-            {% endif %}
-            {% if error %}
-            <div style="background-color: red">
-                {{error}}
-            </div>
-            <br/>
-            {% endif %}
-            {% set vars = {"readonly": "readonly" if status == "check" else "", "bank_index": 0} %}
-            <div>{{utility.name}}</div>
-            <div>{{utility.description | urls_to_links}}</div>
+{% extends "layout.html" %}
+
+{% block content %}
+    {% if status == "check" %}
+    <div class="alert alert-warning" role="alert">
+        Check the values are correct
+    </div>
+    {% endif %}
+    {% if error %}
+    <div class="alert alert-danger" role="alert">
+        {{error}}
+    </div>
+    {% endif %}
+
+    {% set vars = {"readonly": "readonly" if status == "check" else "", "bank_index": 0} %}
+
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">{{utility.name}}</h3>
+            <p class="card-text">{{utility.description | urls_to_links}}</p>
+        </div>
+        <div class="card-body">
             {% if utility.bank_description_json|length > 1 %}
-            <select id="bank_select" {{"disabled" if vars.readonly else ""}}>
-                {% for bank in utility.bank_description_json %}
-                <option value="{{bank.name}}" {{"selected" if bank.name == selected_bank_name else ""}}>{{bank.name}}</option>
-                {% endfor %}
-            </select>
+            <div class="form-group">
+                <label for="bank_select">Bank Account:</label>
+                <select id="bank_select" {{"disabled" if vars.readonly else ""}} class="form-control">
+                    {% for bank in utility.bank_description_json %}
+                    <option value="{{bank.name}}" {{"selected" if bank.name == selected_bank_name else ""}}>{{bank.name}} - {{bank.account_number}}</option>
+                    {% endfor %}
+                </select>
+            </div>
             <script>
                 var sel = document.getElementById("bank_select");
                 sel.onchange = function(e) {
@@ -31,34 +38,32 @@
                     var form = document.getElementById("bank_" + e.target.value);
                     form.style.display = "block";
                 };
-
             </script>
             {% endif %}
             {% for bank in utility.bank_description_json %}
             <div id="bank_{{bank.name}}" class="bank_form" style="display: {{'block' if bank.name == selected_bank_name or not selected_bank_name and vars.bank_index == 0 else 'none'}}"> 
                 <hr/>
-                <small>
-                    <div>{{bank.account_number}}</div>
-                </small>
-                <form method="post">
+                <form class="form-payment" method="post">
                     <input type="hidden" name="zbp_bank_index" value="{{vars.bank_index}}"/>
                     <input type="hidden" name="zbp_state" value="{{status}}"/>
-                    <label>Amount NZD</label>
-                    <input name="zbp_amount" type="number" value="{{amount}}" step="0.01" {{vars.readonly}}/>
-                    </br>
+                    <div class="form-group">
+                        <label for="zbp_amount">Amount NZD</label>
+                        <input class="form-control" name="zbp_amount" id="zbp_amount" type="number" value="{{amount}}" step="0.01" {{vars.readonly}}/>
+                    </div>
                     {% for field in bank.fields %}
                         {% set max = "max=%d" % field.max if "max" in field else "" %}
                         {% set min = "min=%d" % field.min if "min" in field else "" %}
                         {% set minlength = "minlength=%d" % field.min_chars if "min_chars" in field else "" %}
-                        <label>{{field.label}}</label>
-                        <input name="{{field.label}}" type="{{field.type}}" value="{{values[field.label]}}" {{vars.readonly}} {{min}} {{max}} {{minlength}} />
-                        </br>
+                        <div class="form-group">
+                            <label for="{{field.label}}">{{field.label}}</label>
+                            <input class="form-control" name="{{field.label}}" id="{{field.label}}" type="{{field.type}}" value="{{values[field.label]}}" {{vars.readonly}} {{min}} {{max}} {{minlength}} />
+                        </div>
                     {% endfor %}
-                    <input type="submit" value="{{'Submit' if status == 'create' else 'The values are correct'}}"/>
+                    <button class="btn btn-lg btn-primary btn-block" type="submit">{{'Submit' if status == 'create' else 'The values are correct'}}</button>
                 </form>
                 {% if vars.update({"bank_index": vars.bank_index + 1}) %} {% endif %}
             </div>
             {% endfor %}
         </div>
-    </body>
-</html>
+    </div>
+{% endblock %}

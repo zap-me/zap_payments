@@ -1,98 +1,115 @@
-<html>
-    <body>
-        <div>
-            {% if error %}
-                <div style="background-color: red">
-                {{error}}
-                </div>
+{% extends "layout.html" %}
+
+{% block content %}
+    {% if error %}
+    <div class="alert alert-danger" role="alert">
+        {{error}}
+    </div>
+    {% endif %}
+
+    {% if order %}
+        {% set zap = '{0:0.2f}'.format(invoice.amount_zap/100.0) %}
+        {% if order["status"] == invoice.STATUS_CREATED and not error %}
+    <div class="alert alert-warning" role="alert">
+        Check ZAP amount is ok
+    </div>
+        {% endif %}
+    <div class="card">
+        {% if order["status"] == invoice.STATUS_CREATED and not error %}
+        <div class="card-header">
+            Required amount {{zap}} ZAP
+        </div>
+        <div class="card-body">
+            <form class="form-payment" method="post">
+                <input type="hidden" name="token" value="{{invoice.token}}" />
+                <button class="btn btn-lg btn-primary btn-block" type="submit">Yes I have {{zap}} ZAP ready</button>
+            </form>
+        </div>
+        {% elif order["status"] == invoice.STATUS_READY %}
+        <div class="card-body">
+            {% if invoice.tx_seen %}
+                Transaction received
+            {% else %}
+                {{qrcode_svg | safe}}
             {% endif %}
-            {% if order %}
-                {% if order["status"] == invoice.STATUS_CREATED and not error %}
-                    {% set zap = '{0:0.2f}'.format(invoice.amount_zap/100.0) %}
-                    <div style="background-color: orange">
-                        Check ZAP amount is ok
-                    </div>
-                    <div>ZAP to send: {{zap}}</div>
-                    <form method="post">
-                        <input type="hidden" name="token" value="{{invoice.token}}" />
-                        <input type="submit" value="Yes I have {{zap}} ZAP ready" />
-                    </form>
-                {% elif order["status"] == invoice.STATUS_READY %}
-                    {% if invoice.tx_seen %}
-                        Transaction received
-                    {% else %}
-                        {{qrcode_svg | safe}}
-                    {% endif %}
-                    <br/>
-                    expiry: <span id="expiry"></span>
-                {% endif %}
-                <small>
+            <br/>
+            expiry: <span id="expiry"></span>
+        </div>
+        {% elif order["status"] == invoice.STATUS_EXPIRED %}
+        <div class="card-body">
+            EXPIRED
+        </div>
+        {% endif %}
+        <div class="card-footer text-muted">
+            <small>
                 <div>Token: {{invoice.token}}</div>
                 <div>Tx Seen: {{invoice.tx_seen}}</div>
                 <div>Bronze Token: {{invoice.bronze_broker_token}}</div>
                 <div>Bronce Order Status: {{order["status"]}}</div>
-                </small>
-            {% endif %}
+            </small>
         </div>
+    </div>
+    {% endif %}
+{% endblock %}
 
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
-        <script>
-            function reloadNoPost() {
-                window.location = window.location.href.split("#")[0];
+{% block scripts %}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
+    <script>
+        function reloadNoPost() {
+            window.location = window.location.href.split("#")[0];
+        }
+
+        function docReady(fn) {
+            // see if DOM is already available
+            if (document.readyState === "complete" || document.readyState === "interactive") {
+                // call on next available tick
+                setTimeout(fn, 1);
+            } else {
+                document.addEventListener("DOMContentLoaded", fn);
+            }
+        }
+
+        docReady(function() {
+            // expiry countdown
+            var expiry = document.getElementById("expiry");
+            if (expiry) {
+                var countDownTimer = setInterval(function() {
+                    var countDownDate = new Date({{order["expiry"] * 1000}}).getTime();
+                    var now = new Date().getTime();
+                    var distance = countDownDate - now;
+                    var minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                    var seconds = Math.floor((distance % (1000 * 60)) / 1000);
+                    expiry.innerHTML = minutes + "m " + seconds + "s ";
+                    if (distance < 0) {
+                        clearInterval(countDownTimer);
+                        expiry.innerHTML = "EXPIRED";
+                    }
+                }, 1000);
             }
 
-            function docReady(fn) {
-                // see if DOM is already available
-                if (document.readyState === "complete" || document.readyState === "interactive") {
-                    // call on next available tick
-                    setTimeout(fn, 1);
-                } else {
-                    document.addEventListener("DOMContentLoaded", fn);
-                }
-            }
+            // socket.io
+            setTimeout(function() {
+                //const socket = io(document.location.scheme + document.location.host + "/");
+                const socket = io("/");
 
-            docReady(function() {
-                // expiry countdown
-                var expiry = document.getElementById("expiry");
-                if (expiry) {
-                    var countDownTimer = setInterval(function() {
-                        var countDownDate = new Date({{order["expiry"] * 1000}}).getTime();
-                        var now = new Date().getTime();
-                        var distance = countDownDate - now;
-                        var minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-                        var seconds = Math.floor((distance % (1000 * 60)) / 1000);
-                        expiry.innerHTML = minutes + "m " + seconds + "s ";
-                        if (distance < 0) {
-                            clearInterval(countDownTimer);
-                            expiry.innerHTML = "EXPIRED";
-                        }
-                    }, 1000);
-                }
-
-                // socket.io
-                setTimeout(function() {
-                    //const socket = io(document.location.scheme + document.location.host + "/");
-                    const socket = io("/");
-
-                    socket.on('connect', () => {
-                        console.log("socket connected");
-                    });
-                    socket.on('disconnect', () => {
-                        console.log("socket disconnected");
-                    });
-                    socket.on('update', (invoice) => {
-                        console.log("update: " + invoice);
-                    });
-                    socket.on('tx', (tx) => {
-                        console.log("tx: " + tx);
-                        reloadNoPost();
-                    });
-                    socket.on('info', (msg) => {
-                        console.log("info: " + msg);
-                    });
-                    socket.emit('invoice', '{{invoice.token}}');
-                }, 100);
-            });
-        </script>
-    </body>
-</html>
+                socket.on('connect', () => {
+                    console.log("socket connected");
+                });
+                socket.on('disconnect', () => {
+                    console.log("socket disconnected");
+                });
+                socket.on('update', (invoice) => {
+                    console.log("update: " + invoice);
+                });
+                socket.on('tx', (tx) => {
+                    console.log("tx: " + tx);
+                    reloadNoPost();
+                });
+                socket.on('info', (msg) => {
+                    console.log("info: " + msg);
+                });
+                socket.emit('invoice', '{{invoice.token}}');
+            }, 100);
+        });
+    </script>
+{% endblock %}
