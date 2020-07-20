@@ -94,7 +94,7 @@ def hmac_sha256(secret, msg):
 
 def bronze_request(endpoint, params):
     params["key"] = app.config["BRONZE_API_KEY"]
-    params["nonce"] = int(time.time())
+    params["nonce"] = int(time.time() * 1000)
     body = json.dumps(params)
     # create hmac sha256 signature of body
     signature = hmac_sha256(app.config["BRONZE_API_SECRET"], body)
