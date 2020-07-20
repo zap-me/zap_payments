@@ -18,6 +18,7 @@ from flask_security import Security, SQLAlchemyUserDatastore, \
     UserMixin, RoleMixin, login_required, current_user
 from marshmallow import Schema, fields
 from markupsafe import Markup
+import jsbeautifier
 
 from app_core import app, db
 from utils import generate_key
@@ -209,7 +210,6 @@ def fields_check(fields):
             lst = [target_type for target_type, target_check_fn in valid_target_types]
             raise ValidationError('"{}" is not one of "{}"'.format(TARGET, lst))
 
-
 def bank_description_check(form, field):
     ACCOUNT_NUMBER = 'account_number'
     FIELDS = 'fields'
@@ -289,3 +289,8 @@ class UtilityModelView(RestrictedModelView):
     form_args = dict(
         bank_description = dict(validators=[bank_description_check])
     )
+
+    def on_model_change(self, form, model, is_created):
+        opts = jsbeautifier.default_options()
+        opts.indent_size = 2
+        model.bank_description = jsbeautifier.beautify(form.bank_description.data, opts)
