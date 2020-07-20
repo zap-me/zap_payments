@@ -107,16 +107,16 @@ def bronze_request(endpoint, params):
         r.raise_for_status()
     except:
         print("ERROR: response http status %d (%s)" % (r.status_code, r.content))
-        return None
+        return None, r.content.decode("utf-8")
     print(r.status_code)
     print(r.content)
-    return r
+    return r, None
 
 def bronze_order_status(invoice):
     # create request body
     params = dict(token=invoice.bronze_broker_token)
     # create request
-    r = bronze_request("BrokerStatus", params)
+    r, err = bronze_request("BrokerStatus", params)
     if not r:
         return None
     return r.json()
@@ -125,7 +125,7 @@ def bronze_order_accept(invoice):
     # create request body
     params = dict(token=invoice.bronze_broker_token)
     # create request
-    r = bronze_request("BrokerAccept", params)
+    r, err = bronze_request("BrokerAccept", params)
     if not r:
         return None
     return r.json()
@@ -354,9 +354,9 @@ def invoice_create(utility, details, amount):
     recipient_params = dict(reference=reference, code=code, particulars=particulars)
     params = dict(market="ZAPNZD", side="sell", amount=str(amount), amountasquotecurrency=True, recipient=bank_account, customrecipientparams=recipient_params)
     # create request
-    r = bronze_request("BrokerCreate", params)
+    r, err = bronze_request("BrokerCreate", params)
     if not r:
-        return None
+        return None, err
     # extract token and create invoice
     body = r.json()
     broker_token = body["token"]
@@ -365,7 +365,7 @@ def invoice_create(utility, details, amount):
     invoice = Invoice(amount_cents_nzd, amount_cents_zap, broker_token)
     db.session.add(invoice)
     db.session.commit()
-    return invoice
+    return invoice, None
 
 @app.route("/utility", methods=["GET", "POST"])
 def utility():
@@ -394,11 +394,11 @@ def utility():
                 error = validate_values(bank_desc, values)
             if not error:
                 details = bank_transaction_details(bank_desc, values)
-                invoice = invoice_create(utility, details, amount)
+                invoice, err = invoice_create(utility, details, amount)
                 if invoice:
                     return redirect(url_for("invoice", token=invoice.token))
                 else:
-                    error = "failed to create invoice"
+                    error = "failed to create invoice ({})".format(err)
         return render_template("utility.html", utility=utility, selected_bank_name=bank_desc["name"], status=status, amount=amount, values=values, error=error)
     else:
         return render_template("utility.html", utility=utility, status=STATUS_CREATE, values=werkzeug.MultiDict())
