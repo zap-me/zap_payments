@@ -311,12 +311,11 @@ def validate_amount(amount):
 def validate_values(bank_description_item, values):
     for field in bank_description_item["fields"]:
         name = field["label"]
-        print(name)
         value = values[name]
         if not value and (not "allow_empty" in field or not field["allow_empty"]):
             return "please enter a value for '%s'" % name
         type_ = field["type"].lower()
-        if type_ == "number":
+        if type_ == "number" and value:
             num = int(value)
             if "min" in field and num < field["min"]:
                 return "value for '%s' has a minimum of %d" % (name, field["min"])
@@ -336,7 +335,8 @@ def bank_transaction_details(bank_description_item, values):
     details = dict(bank_account = bank_description_item["account_number"])
     for field in bank_description_item["fields"]:
         target = field["target"]
-        value = values[field["label"]]
+        name = field["label"]
+        value = values[name]
         if isinstance(target, list):
             for t in target:
                 details[t], value = value[:MAX_DETAIL_CHARS], value[MAX_DETAIL_CHARS:]

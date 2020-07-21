@@ -57,6 +57,9 @@
                         <div class="form-group">
                             <label for="{{field.label}}">{{field.label}}</label>
                             <input class="form-control" name="{{field.label}}" id="{{field.label}}" type="{{field.type}}" value="{{values[field.label]}}" {{vars.readonly}} {{min}} {{max}} {{minlength}} />
+                            {% if field.description %}
+                            <small id="{{field.label}}-desc" class="form-text text-muted">{{field.description}}</small>
+                            {% endif %}
                         </div>
                     {% endfor %}
                     <button class="btn btn-lg btn-primary btn-block" type="submit">{{'Submit' if status == 'create' else 'The values are correct'}}</button>
