@@ -47,6 +47,9 @@
                     <input type="hidden" name="zbp_bank_index" value="{{vars.bank_index}}"/>
                     <input type="hidden" name="zbp_state" value="{{status}}"/>
                     <div class="form-group">
+			<label for="email_address">User Email Address</label>
+			<input class="form-control" name="email_address" id="email_address" type="text" value="{{email_address}}" step="0.01" {{vars.readonly}}/>
+			<small id="email_address_label-desc" class="form-text text-muted">Email address to use for notifications</small></br>
                         <label for="zbp_amount">Amount NZD</label>
                         <input class="form-control" name="zbp_amount" id="zbp_amount" type="number" value="{{amount}}" step="0.01" {{vars.readonly}}/>
                     </div>

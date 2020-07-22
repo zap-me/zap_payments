@@ -21,7 +21,7 @@ from markupsafe import Markup
 import jsbeautifier
 
 from app_core import app, db
-from utils import generate_key
+from utils import generate_key, is_email
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +74,7 @@ class InvoiceSchema(Schema):
     amount_zap = fields.Integer()
     bronze_broker_token = fields.String()
     tx_seen = fields.Boolean()
+    email_address = fields.String()
 
 class Invoice(db.Model):
     STATUS_CREATED = "Created"
@@ -93,13 +94,17 @@ class Invoice(db.Model):
     amount_zap = db.Column(db.Integer, nullable=False)
     bronze_broker_token = db.Column(db.String(255), nullable=False)
     tx_seen = db.Column(db.Boolean, nullable=False)
+    email_address  = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.String(255))
 
-    def __init__(self, amount, amount_zap, bronze_broker_token):
+    def __init__(self, amount, amount_zap, bronze_broker_token, email_address, status):
         self.generate_defaults()
         self.amount = amount
         self.amount_zap = amount_zap
         self.bronze_broker_token = bronze_broker_token
         self.tx_seen = False
+        self.email_address = email_address
+        self.status = status
 
     def generate_defaults(self):
         self.date = datetime.datetime.now()
@@ -158,7 +163,6 @@ class Utility(db.Model):
 
     def __repr__(self):
         return "<Utility %r>" % (self.name)
-
 
 #
 # Setup Flask-Security
@@ -270,6 +274,13 @@ class UserModelView(RestrictedModelView):
 class InvoiceModelView(RestrictedModelView):
     column_formatters = dict(amount=_format_amount, amount_receive=_format_amount)
     column_labels = dict(amount='ZAP Amount', amount_receive='NZD Amount')
+
+    def _validate_form(self, form):
+        if not form.email_address:
+            return False, "Empty email address value"
+        if form.email_address:
+            return False, "Invalid email_address"
+        return True
 
 class UtilityModelView(RestrictedModelView):
     can_create = True
