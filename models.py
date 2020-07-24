@@ -21,7 +21,7 @@ from markupsafe import Markup
 import jsbeautifier
 
 from app_core import app, db
-from utils import generate_key, is_email
+from utils import generate_key
 
 logger = logging.getLogger(__name__)
 
@@ -70,11 +70,12 @@ class InvoiceSchema(Schema):
     token = fields.String()
     nonce = fields.Integer()
     secret = fields.String()
+    email = fields.String()
     amount = fields.Integer()
     amount_zap = fields.Integer()
     bronze_broker_token = fields.String()
+    status = fields.String()
     tx_seen = fields.Boolean()
-    email_address = fields.String()
 
 class Invoice(db.Model):
     STATUS_CREATED = "Created"
@@ -90,21 +91,21 @@ class Invoice(db.Model):
     token = db.Column(db.String(255), unique=True, nullable=False)
     nonce = db.Column(db.Integer, nullable=False)
     secret = db.Column(db.String(255), nullable=False)
+    email = db.Column(db.String(255))
     amount = db.Column(db.Integer, nullable=False)
     amount_zap = db.Column(db.Integer, nullable=False)
     bronze_broker_token = db.Column(db.String(255), nullable=False)
-    tx_seen = db.Column(db.Boolean, nullable=False)
-    email_address  = db.Column(db.String(255), nullable=False)
     status = db.Column(db.String(255))
+    tx_seen = db.Column(db.Boolean, nullable=False)
 
-    def __init__(self, amount, amount_zap, bronze_broker_token, email_address, status):
+    def __init__(self, email, amount, amount_zap, bronze_broker_token, status):
         self.generate_defaults()
+        self.email = email
         self.amount = amount
         self.amount_zap = amount_zap
         self.bronze_broker_token = bronze_broker_token
-        self.tx_seen = False
-        self.email_address = email_address
         self.status = status
+        self.tx_seen = False
 
     def generate_defaults(self):
         self.date = datetime.datetime.now()
@@ -272,15 +273,8 @@ class UserModelView(RestrictedModelView):
     column_editable_list = ['roles']
 
 class InvoiceModelView(RestrictedModelView):
-    column_formatters = dict(amount=_format_amount, amount_receive=_format_amount)
-    column_labels = dict(amount='ZAP Amount', amount_receive='NZD Amount')
-
-    def _validate_form(self, form):
-        if not form.email_address:
-            return False, "Empty email address value"
-        if form.email_address:
-            return False, "Invalid email_address"
-        return True
+    column_formatters = dict(amount=_format_amount, amount_zap=_format_amount)
+    column_labels = dict(amount='NZD Amount', amount_zap='ZAP Amount')
 
 class UtilityModelView(RestrictedModelView):
     can_create = True

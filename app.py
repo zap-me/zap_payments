@@ -308,12 +308,9 @@ def validate_amount(amount):
         return "amount must be greater then zero"
     return None
 
-def validate_email_address(email_address):
-    if not email_address:
-        return "enter an email address"
-    if email_address:
-        is_email_valid = is_email(email_address)
-        return is_email_valid
+def validate_email(email):
+    if email and not is_email(email):
+        return "invalid email address"
     return None
 
 def validate_values(bank_description_item, values):
@@ -352,7 +349,7 @@ def bank_transaction_details(bank_description_item, values):
             details[target] = value
     return details
 
-def invoice_create(utility, details, amount, email_address):
+def invoice_create(utility, details, email, amount):
     # init bank recipient params
     bank_account = details["bank_account"]
     reference = details["reference"] if "reference" in details else ""
@@ -370,8 +367,8 @@ def invoice_create(utility, details, amount, email_address):
     broker_token = body["token"]
     amount_cents_zap = int(decimal.Decimal(body["amountSend"]) * 100)
     amount_cents_nzd = int(decimal.Decimal(body["amountReceive"]) * 100)
-    email_address = str(email_address)
-    invoice = Invoice(amount_cents_nzd, amount_cents_zap, broker_token, email_address)
+    status = body["status"]
+    invoice = Invoice(email, amount_cents_nzd, amount_cents_zap, broker_token, status)
     db.session.add(invoice)
     db.session.commit()
     return invoice, None
@@ -388,12 +385,12 @@ def utility():
         bank_index = int(request.form.get("zbp_bank_index"))
         bank_desc = utility.bank_description_json[bank_index]
         status = request.form.get("zbp_state")
-        email_address = request.form.get("email_address")
+        email = request.form.get("zbp_email")
         amount = request.form.get("zbp_amount")
         values = request.form
         error = None
         if status == STATUS_CREATE:
-            error = validate_email_address(email_address)
+            error = validate_email(email)
             if not error:
                 error = validate_amount(amount)
             if not error:
@@ -401,19 +398,19 @@ def utility():
             if not error:
                 status = STATUS_CHECK
         elif status == STATUS_CHECK:
-            error = validate_email_address(email_address)
+            error = validate_email(email)
             if not error:
                 error = validate_amount(amount)
             if not error:
                 error = validate_values(bank_desc, values)
             if not error:
                 details = bank_transaction_details(bank_desc, values)
-                invoice, err = invoice_create(utility, details, amount, email_address)
+                invoice, err = invoice_create(utility, details, email, amount)
                 if invoice:
                     return redirect(url_for("invoice", token=invoice.token))
                 else:
                     error = "failed to create invoice ({})".format(err)
-        return render_template("utility.html", utility=utility, selected_bank_name=bank_desc["name"], status=status, email_address=email_address, amount=amount, values=values, error=error)
+        return render_template("utility.html", utility=utility, selected_bank_name=bank_desc["name"], status=status, email=email, amount=amount, values=values, error=error)
     else:
         return render_template("utility.html", utility=utility, status=STATUS_CREATE, values=werkzeug.MultiDict())
 

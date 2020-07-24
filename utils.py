@@ -28,6 +28,7 @@ def check_hmac_auth(api_key, nonce, sig, body):
         return True, ""
     return False, "invalid signature"
 
-def is_email(email_address):
-    if not re.match("[^@]+@[^@]+\.[^@]+", email_address):
-        return  "Invalid email format"
+def is_email(email):
+    if not re.match("[^@]+@[^@]+\.[^@]+", email):
+        return False
+    return True
