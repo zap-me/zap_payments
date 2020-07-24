@@ -152,15 +152,22 @@ def transfer_tx_callback(tokens, tx):
         print("sending 'tx' event to room %s" % token)
         socketio.emit("tx", txt, json=True, room=token)
 
-def timer_callback():
-    print("timer_callback()..")
+def ws_invoices_timer_callback():
+    #print("ws_invoices_timer_callback()..")
     for token in ws_invoices.keys():
-        print("timer_callback: token: {}".format(token))
+        print("ws_invoices_timer_callback: token: {}".format(token))
         invoice = Invoice.from_token(db.session, token)
         if invoice:
             order = bronze_order_status(invoice)
             if order:
                 socketio.emit("order_status", order["status"], room=token)
+
+def email_invoices_timer_callback():
+    print("email_invoices_timer_callback()..")
+    invoices = Invoice.all_with_email_and_not_terminated(db.session)
+    for invoice in invoices:
+        print(invoice)
+        #TODO
 
 def qrcode_svg_create(data):
     factory = qrcode.image.svg.SvgPathImage
@@ -174,7 +181,8 @@ def qrcode_svg_create(data):
 def start_address_watcher():
     aw.transfer_tx_callback = transfer_tx_callback
     aw.start()
-    timer.callback = timer_callback
+    timer.add_timer(ws_invoices_timer_callback, 60)
+    timer.add_timer(email_invoices_timer_callback, 600)
     timer.start()
 
 def bad_request(message):

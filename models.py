@@ -11,7 +11,7 @@ from flask_admin.actions import action
 from flask_admin.babel import lazy_gettext
 from flask_admin.model import filters
 from flask_admin.contrib import sqla
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from flask_admin.contrib.sqla.filters import BaseSQLAFilter
 from wtforms import ValidationError
 from flask_security import Security, SQLAlchemyUserDatastore, \
@@ -121,8 +121,12 @@ class Invoice(db.Model):
     def from_token(cls, session, token):
         return session.query(cls).filter(cls.token == token).first()
 
+    @classmethod
+    def all_with_email_and_not_terminated(cls, session):
+        return session.query(cls).filter(and_(cls.email != None, or_(cls.status == None, and_(cls.status != cls.STATUS_SENT, cls.status != cls.STATUS_EXPIRED)))).all()
+
     def __repr__(self):
-        return "<Invoice %r>" % (self.token)
+        return "<Invoice %r %r>" % (self.token, self.status)
 
     def to_json(self):
         schema = InvoiceSchema()
