@@ -487,3 +487,4 @@ if __name__ == "__main__":
         # stop timer
         if timer:
             timer.kill()
+
