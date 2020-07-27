@@ -15,12 +15,13 @@ from flask import url_for, redirect, render_template, request, abort, jsonify, M
 from flask_security.utils import encrypt_password
 from flask_socketio import Namespace, emit, join_room, leave_room
 from flask_security import current_user
+from flask_mail import Message
 import werkzeug
 import requests
 import qrcode
 import qrcode.image.svg
 
-from app_core import app, db, socketio, aw, timer
+from app_core import app, db, mail, socketio, aw, timer
 from models import security, user_datastore, Role, User, Invoice, Utility
 import admin
 from utils import check_hmac_auth, generate_key, is_email
@@ -164,10 +165,19 @@ def ws_invoices_timer_callback():
 
 def email_invoices_timer_callback():
     print("email_invoices_timer_callback()..")
-    invoices = Invoice.all_with_email_and_not_terminated(db.session)
-    for invoice in invoices:
-        print(invoice)
-        #TODO
+    with app.app_context():
+        invoices = Invoice.all_with_email_and_not_terminated(db.session)
+        for invoice in invoices:
+            order = bronze_order_status(invoice)
+            if order:
+                if invoice.status != order["status"]:
+                    # send email
+                    msg = Message('ZAP bill payment status updated', recipients=[invoice.email])
+                    msg.body = 'Invoice {} updated'.format(url_for("invoice", token=invoice.token))
+                    mail.send(msg)
+                    # update invoice object
+                    invoice.status = order["status"]
+                    db.session.commit()
 
 def qrcode_svg_create(data):
     factory = qrcode.image.svg.SvgPathImage
