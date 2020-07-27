@@ -2,6 +2,12 @@ import time
 
 import gevent
 
+class Callback():
+    def __init__(self, callback, elapsed, seconds):
+        self.callback = callback
+        self.elapsed = elapsed
+        self.seconds = seconds
+
 class Timer(gevent.Greenlet):
 
     callbacks = []
@@ -10,16 +16,16 @@ class Timer(gevent.Greenlet):
         gevent.Greenlet.__init__(self)
 
     def add_timer(self, callback, seconds):
-        self.callbacks.append((callback, time.time(), seconds))
+        self.callbacks.append(Callback(callback, time.time(), seconds))
 
     def _run(self):
         print("running Timer...")
         while 1:
             now = time.time()
-            for callback, elapsed, seconds in self.callbacks:
-                #print("now - elapsed: {}".format(now - elapsed))
-                while now - elapsed >= seconds:
-                    elapsed += seconds
-                    callback()
+            for cb in self.callbacks:
+                #print("now - elapsed: {}, seconds: {}".format(now - cb.elapsed, cb.seconds))
+                while now - cb.elapsed >= cb.seconds:
+                    cb.elapsed += cb.seconds
+                    cb.callback()
             # sleep
             gevent.sleep(5)
