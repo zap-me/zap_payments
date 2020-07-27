@@ -1,15 +1,17 @@
-<html>
-    <body>
-        <div>
-            <form action="/utility">
-                Choose utility:
-                <select name="utility">
-                    {% for utility in utilities %}
-                    <option value="{{utility.id}}">{{utility.name}}</option>
-                    {% endfor %}
-                </select>
-                <input type="submit" value="Choose"></input>
-            </form>
-        </div>
-    </body>
-</html>
+{% extends "layout.html" %}
+
+{% block content %}
+<form class="form-payment" action="/utility">
+    <img class="mb-4" src="https://zap.me/app/themes/zap/assets/public/images/logo-footer.svg" alt="" width="72" height="72">
+    <h1 class="h3 mb-3 font-weight-normal">Please choose a utility</h1>
+    <div class="form-group">
+        <label for="utility">Utilities:</label>
+        <select name="utility" id="utility" class="form-control">
+            {% for utility in utilities %}
+            <option value="{{utility.id}}">{{utility.name}}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <button class="btn btn-lg btn-primary btn-block" type="submit">Submit</button>
+</form>
+{% endblock %}

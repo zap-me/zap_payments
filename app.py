@@ -9,8 +9,9 @@ import hmac
 import hashlib
 import base64
 import io
+import re
 
-from flask import url_for, redirect, render_template, request, abort, jsonify
+from flask import url_for, redirect, render_template, request, abort, jsonify, Markup
 from flask_security.utils import encrypt_password
 from flask_socketio import Namespace, emit, join_room, leave_room
 from flask_security import current_user
@@ -19,7 +20,7 @@ import requests
 import qrcode
 import qrcode.image.svg
 
-from app_core import app, db, socketio, aw
+from app_core import app, db, socketio, aw, timer
 from models import security, user_datastore, Role, User, Invoice, Utility
 import admin
 from utils import check_hmac_auth, generate_key
@@ -93,7 +94,7 @@ def hmac_sha256(secret, msg):
 
 def bronze_request(endpoint, params):
     params["key"] = app.config["BRONZE_API_KEY"]
-    params["nonce"] = int(time.time())
+    params["nonce"] = int(time.time() * 1000)
     body = json.dumps(params)
     # create hmac sha256 signature of body
     signature = hmac_sha256(app.config["BRONZE_API_SECRET"], body)
@@ -106,16 +107,16 @@ def bronze_request(endpoint, params):
         r.raise_for_status()
     except:
         print("ERROR: response http status %d (%s)" % (r.status_code, r.content))
-        return None
+        return None, r.content.decode("utf-8")
     print(r.status_code)
     print(r.content)
-    return r
+    return r, None
 
 def bronze_order_status(invoice):
     # create request body
     params = dict(token=invoice.bronze_broker_token)
     # create request
-    r = bronze_request("BrokerStatus", params)
+    r, err = bronze_request("BrokerStatus", params)
     if not r:
         return None
     return r.json()
@@ -124,7 +125,7 @@ def bronze_order_accept(invoice):
     # create request body
     params = dict(token=invoice.bronze_broker_token)
     # create request
-    r = bronze_request("BrokerAccept", params)
+    r, err = bronze_request("BrokerAccept", params)
     if not r:
         return None
     return r.json()
@@ -151,6 +152,16 @@ def transfer_tx_callback(tokens, tx):
         print("sending 'tx' event to room %s" % token)
         socketio.emit("tx", txt, json=True, room=token)
 
+def timer_callback():
+    print("timer_callback()..")
+    for token in ws_invoices.keys():
+        print("timer_callback: token: {}".format(token))
+        invoice = Invoice.from_token(db.session, token)
+        if invoice:
+            order = bronze_order_status(invoice)
+            if order:
+                socketio.emit("order_status", order["status"], room=token)
+
 def qrcode_svg_create(data):
     factory = qrcode.image.svg.SvgPathImage
     img = qrcode.make(data, image_factory=factory)
@@ -163,11 +174,30 @@ def qrcode_svg_create(data):
 def start_address_watcher():
     aw.transfer_tx_callback = transfer_tx_callback
     aw.start()
+    timer.callback = timer_callback
+    timer.start()
 
 def bad_request(message):
     response = jsonify({"message": message})
     response.status_code = 400
     return response
+
+def find_urls(string): 
+    # findall() has been used  
+    # with valid conditions for urls in string 
+    regex = r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’]))"
+    url = re.findall(regex,string)       
+    return [x[0] for x in url] 
+
+@app.template_filter("urls_to_links")
+def urls_to_links(s):
+    urls = find_urls(s)
+    if not urls:
+        return s
+    for url in urls:
+        link = '<a href="{}" target="_blank">{}</a>'.format(url, url)
+        s = s.replace(url, link)
+    return Markup(s)
 
 #
 # Flask views
@@ -268,14 +298,24 @@ def utilities():
     utilities = Utility.all_alphabetical(db.session)
     return render_template("utilities.html", utilities=utilities)
 
-def validate_values(fields, values):
-    for field in fields:
+def validate_amount(amount):
+    try:
+        # check amount
+        amount = decimal.Decimal(amount)
+    except:
+        return "amount must be a valid number"
+    if amount <= 0:
+        return "amount must be greater then zero"
+    return None
+
+def validate_values(bank_description_item, values):
+    for field in bank_description_item["fields"]:
         name = field["label"]
         value = values[name]
         if not value and (not "allow_empty" in field or not field["allow_empty"]):
             return "please enter a value for '%s'" % name
         type_ = field["type"].lower()
-        if type_ == "number":
+        if type_ == "number" and value:
             num = int(value)
             if "min" in field and num < field["min"]:
                 return "value for '%s' has a minimum of %d" % (name, field["min"])
@@ -291,11 +331,12 @@ def validate_values(fields, values):
             return "value for '%s' is too long" % name
     return None
 
-def bank_transaction_details(utility, values):
-    details = {}
-    for field in utility.fields_description_json:
+def bank_transaction_details(bank_description_item, values):
+    details = dict(bank_account = bank_description_item["account_number"])
+    for field in bank_description_item["fields"]:
         target = field["target"]
-        value = values[field["label"]]
+        name = field["label"]
+        value = values[name]
         if isinstance(target, list):
             for t in target:
                 details[t], value = value[:MAX_DETAIL_CHARS], value[MAX_DETAIL_CHARS:]
@@ -305,16 +346,17 @@ def bank_transaction_details(utility, values):
 
 def invoice_create(utility, details, amount):
     # init bank recipient params
+    bank_account = details["bank_account"]
     reference = details["reference"] if "reference" in details else ""
     code = details["code"] if "code" in details else ""
     particulars = details["particulars"] if "particulars" in details else ""
     # request params
     recipient_params = dict(reference=reference, code=code, particulars=particulars)
-    params = dict(market="ZAPNZD", side="sell", amount=str(amount), amountasquotecurrency=True, recipient=utility.bank_account, customrecipientparams=recipient_params)
+    params = dict(market="ZAPNZD", side="sell", amount=str(amount), amountasquotecurrency=True, recipient=bank_account, customrecipientparams=recipient_params)
     # create request
-    r = bronze_request("BrokerCreate", params)
+    r, err = bronze_request("BrokerCreate", params)
     if not r:
-        return None
+        return None, err
     # extract token and create invoice
     body = r.json()
     broker_token = body["token"]
@@ -323,7 +365,7 @@ def invoice_create(utility, details, amount):
     invoice = Invoice(amount_cents_nzd, amount_cents_zap, broker_token)
     db.session.add(invoice)
     db.session.commit()
-    return invoice
+    return invoice, None
 
 @app.route("/utility", methods=["GET", "POST"])
 def utility():
@@ -332,33 +374,32 @@ def utility():
 
     utility_id = int(request.args.get("utility"))
     utility = Utility.from_id(db.session, utility_id)
-    Utility.jsonify_fields_descriptions([utility])
+    Utility.jsonify_bank_descriptions([utility])
     if request.method == "POST":
+        bank_index = int(request.form.get("zbp_bank_index"))
+        bank_desc = utility.bank_description_json[bank_index]
         status = request.form.get("zbp_state")
         amount = request.form.get("zbp_amount")
         values = request.form
         error = None
         if status == STATUS_CREATE:
-            try:
-                # check amount
-                amount = decimal.Decimal(amount)
-                if amount <= 0:
-                    error = "amount must be greater then zero"
-                else:
-                    # check field values
-                    error = validate_values(utility.fields_description_json, values)
-            except:
-                error = "amount must be valid number"
+            error = validate_amount(amount)
+            if not error:
+                error = validate_values(bank_desc, values)
             if not error:
                 status = STATUS_CHECK
         elif status == STATUS_CHECK:
-            details = bank_transaction_details(utility, values)
-            invoice = invoice_create(utility, details, amount)
-            if invoice:
-                return redirect(url_for("invoice", token=invoice.token))
-            else:
-                error = "failed to create invoice"
-        return render_template("utility.html", utility=utility, status=status, amount=amount, values=values, error=error)
+            error = validate_amount(amount)
+            if not error:
+                error = validate_values(bank_desc, values)
+            if not error:
+                details = bank_transaction_details(bank_desc, values)
+                invoice, err = invoice_create(utility, details, amount)
+                if invoice:
+                    return redirect(url_for("invoice", token=invoice.token))
+                else:
+                    error = "failed to create invoice ({})".format(err)
+        return render_template("utility.html", utility=utility, selected_bank_name=bank_desc["name"], status=status, amount=amount, values=values, error=error)
     else:
         return render_template("utility.html", utility=utility, status=STATUS_CREATE, values=werkzeug.MultiDict())
 
@@ -424,3 +465,6 @@ if __name__ == "__main__":
         # stop addresswatcher
         if aw:
             aw.kill()
+        # stop timer
+        if timer:
+            timer.kill()

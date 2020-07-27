@@ -7,6 +7,7 @@ from flask_mail_sendgrid import MailSendGrid
 from flask_socketio import SocketIO
 
 from addresswatcher import AddressWatcher
+from timer import Timer
 
 # Create Flask application
 app = Flask(__name__)
@@ -44,3 +45,4 @@ mail = MailSendGrid(app)
 socketio = SocketIO(app)
 
 aw = AddressWatcher(app.config["TESTNET"])
+timer = Timer(60)

@@ -19,6 +19,7 @@ from flask_security import Security, SQLAlchemyUserDatastore, \
     UserMixin, RoleMixin, login_required, current_user
 from marshmallow import Schema, fields
 from markupsafe import Markup
+import jsbeautifier
 
 from app_core import app, db
 from utils import generate_key
@@ -78,6 +79,10 @@ class InvoiceSchema(Schema):
 class Invoice(db.Model):
     STATUS_CREATED = "Created"
     STATUS_READY = "Ready"
+    STATUS_INCOMING = "Incomming" #sp :(
+    STATUS_CONFIRMED = "Confirmed"
+    STATUS_PAYOUTWAIT = "PayoutWait"
+    STATUS_SENT = "Sent"
     STATUS_EXPIRED = "Expired"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -123,8 +128,7 @@ class Utility(db.Model):
     date = db.Column(db.DateTime(), nullable=False)
     name = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text())
-    bank_account = db.Column(db.String(255), nullable=False)
-    fields_description = db.Column(db.Text(), nullable=False)
+    bank_description = db.Column(db.Text(), nullable=False)
 
     def __init__(self, name):
         self.generate_defaults()
@@ -149,9 +153,9 @@ class Utility(db.Model):
         return session.query(cls).filter(cls.id == utility_id).first()
 
     @classmethod
-    def jsonify_fields_descriptions(cls, utilities):
+    def jsonify_bank_descriptions(cls, utilities):
         for utility in utilities:
-            utility.fields_description_json = json.loads(utility.fields_description)
+            utility.bank_description_json = json.loads(utility.bank_description)
 
     def __repr__(self):
         return "<Utility %r>" % (self.name)
@@ -174,7 +178,7 @@ def _format_amount(view, context, model, name):
     if name == 'amount_zap':
         return round((model.amount_zap / 100),2)
 
-def fields_description_check(form, field):
+def fields_check(fields):
     TYPE = 'type'
     TARGET = 'target'
     mandatory = ['label', 'description', TYPE, TARGET]
@@ -189,13 +193,7 @@ def fields_description_check(form, field):
         for target in targets:
             target_check(target)
     valid_target_types = [(str, target_check), (list, target_check_list)]
-    try:
-        json_data = json.loads(field.data)
-    except:
-        raise ValidationError('Invalid JSON')
-    if not isinstance(json_data, list):
-        raise ValidationError('Root object is not a list/array')
-    for item in json_data:
+    for item in fields:
         if not isinstance(item, dict):
             raise ValidationError('"{}" is not a dictionary'.format(item))
         for param in mandatory:
@@ -213,10 +211,34 @@ def fields_description_check(form, field):
             lst = [target_type for target_type, target_check_fn in valid_target_types]
             raise ValidationError('"{}" is not one of "{}"'.format(TARGET, lst))
 
+<<<<<<< HEAD
 class _json_beautifier(vie, context, model, name):
     if name == 'fields_description':
         json_format_beaut = jsbeautifier.beautify(fields_description)
         return json_format_beaut
+=======
+def bank_description_check(form, field):
+    ACCOUNT_NUMBER = 'account_number'
+    FIELDS = 'fields'
+    mandatory = ['name', ACCOUNT_NUMBER, FIELDS]
+    try:
+        json_data = json.loads(field.data)
+    except:
+        raise ValidationError('Invalid JSON')
+    if not isinstance(json_data, list):
+        raise ValidationError('Root object is not a list/array')
+    for item in json_data:
+        if not isinstance(item, dict):
+            raise ValidationError('"{}" is not a dictionary'.format(item))
+        for param in mandatory:
+            if param not in item:
+                raise ValidationError('"{}" is missing "{}" parameter'.format(item, param))
+        if not isinstance(item[ACCOUNT_NUMBER], str):
+            raise ValidationError('"{}" is not a string'.format(ACCOUNT_NUMBER))
+        if not isinstance(item[FIELDS], list):
+            raise ValidationError('"{}" is not a list/array'.format(FIELDS))
+        fields_check(item[FIELDS])
+>>>>>>> c467f6387cade7fdeb9c49c10cf94e66b41c203e
 
 class ReloadingIterator:
     def __init__(self, iterator_factory):
@@ -266,16 +288,17 @@ class UtilityModelView(RestrictedModelView):
         'description': {
             'rows': 5
         },
-        'fields_description': {
+        'bank_description': {
             'rows': 20,
             'style': 'font-family: monospace;'
         }
     }
 
     form_args = dict(
-        fields_description = dict(validators=[fields_description_check])
+        bank_description = dict(validators=[bank_description_check])
     )
 
-    column_formatters = {
-        'fields description': _json_format_beaut
-    }
+    def on_model_change(self, form, model, is_created):
+        opts = jsbeautifier.default_options()
+        opts.indent_size = 2
+        model.bank_description = jsbeautifier.beautify(form.bank_description.data, opts)
