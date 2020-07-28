@@ -31,7 +31,8 @@
                 Transaction seen, waiting for exchange backend to process it..
             {% else %}
                 {{qrcode_svg | safe}}
-		<br><a href="{{url}}">Click this link</a>
+                <br/>
+                <a href="{{url}}">{{url}}</a>
             {% endif %}
             <br/>
             Expiry: <span id="expiry"></span>
