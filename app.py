@@ -102,15 +102,13 @@ def bronze_request(endpoint, params):
     # create request
     headers = {"Content-Type": "application/json", "X-Signature": signature}
     url = app.config["BRONZE_ADDRESS"] + "/api/v1/" + endpoint
-    print(":: requesting %s.." % url)
+    #print(":: requesting %s.." % url)
     r = requests.post(url, headers=headers, data=body)
     try:
         r.raise_for_status()
     except:
         print("ERROR: response http status %d (%s)" % (r.status_code, r.content))
         return None, r.content.decode("utf-8")
-    print(r.status_code)
-    print(r.content)
     return r, None
 
 def bronze_order_status(invoice):
@@ -156,7 +154,7 @@ def transfer_tx_callback(tokens, tx):
 def ws_invoices_timer_callback():
     #print("ws_invoices_timer_callback()..")
     for token in ws_invoices.keys():
-        print("ws_invoices_timer_callback: token: {}".format(token))
+        #print("ws_invoices_timer_callback: token: {}".format(token))
         invoice = Invoice.from_token(db.session, token)
         if invoice:
             order = bronze_order_status(invoice)
