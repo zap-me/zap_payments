@@ -434,6 +434,7 @@ def utility():
 def invoice():
     error = None
     qrcode_svg = None
+    url = None
     token = request.args.get("token")
     invoice = Invoice.from_token(db.session, token)
     if not invoice:
@@ -460,7 +461,7 @@ def invoice():
         url = "waves://{}?asset={}&amount={}&attachment={}".format(payment_address, app.config["ASSET_ID"], invoice.amount_zap, attachment)
         qrcode_svg = qrcode_svg_create(url)
     #TODO: other statuses..
-    return render_template("invoice.html", invoice=invoice, order=order, error=error, qrcode_svg=qrcode_svg)
+    return render_template("invoice.html", invoice=invoice, order=order, error=error, qrcode_svg=qrcode_svg, url=url)
 
 if __name__ == "__main__":
     setup_logging(logging.DEBUG)
