@@ -11,7 +11,7 @@ from flask_admin.actions import action
 from flask_admin.babel import lazy_gettext
 from flask_admin.model import filters
 from flask_admin.contrib import sqla
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from flask_admin.contrib.sqla.filters import BaseSQLAFilter
 from wtforms import ValidationError
 from flask_security import Security, SQLAlchemyUserDatastore, \
@@ -70,9 +70,11 @@ class InvoiceSchema(Schema):
     token = fields.String()
     nonce = fields.Integer()
     secret = fields.String()
+    email = fields.String()
     amount = fields.Integer()
     amount_zap = fields.Integer()
     bronze_broker_token = fields.String()
+    status = fields.String()
     tx_seen = fields.Boolean()
 
 class Invoice(db.Model):
@@ -89,16 +91,20 @@ class Invoice(db.Model):
     token = db.Column(db.String(255), unique=True, nullable=False)
     nonce = db.Column(db.Integer, nullable=False)
     secret = db.Column(db.String(255), nullable=False)
+    email = db.Column(db.String(255))
     amount = db.Column(db.Integer, nullable=False)
     amount_zap = db.Column(db.Integer, nullable=False)
     bronze_broker_token = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.String(255))
     tx_seen = db.Column(db.Boolean, nullable=False)
 
-    def __init__(self, amount, amount_zap, bronze_broker_token):
+    def __init__(self, email, amount, amount_zap, bronze_broker_token, status):
         self.generate_defaults()
+        self.email = email
         self.amount = amount
         self.amount_zap = amount_zap
         self.bronze_broker_token = bronze_broker_token
+        self.status = status
         self.tx_seen = False
 
     def generate_defaults(self):
@@ -115,8 +121,12 @@ class Invoice(db.Model):
     def from_token(cls, session, token):
         return session.query(cls).filter(cls.token == token).first()
 
+    @classmethod
+    def all_with_email_and_not_terminated(cls, session):
+        return session.query(cls).filter(and_(cls.email != None, or_(cls.status == None, and_(cls.status != cls.STATUS_SENT, cls.status != cls.STATUS_EXPIRED)))).all()
+
     def __repr__(self):
-        return "<Invoice %r>" % (self.token)
+        return "<Invoice %r %r>" % (self.token, self.status)
 
     def to_json(self):
         schema = InvoiceSchema()
@@ -158,7 +168,6 @@ class Utility(db.Model):
 
     def __repr__(self):
         return "<Utility %r>" % (self.name)
-
 
 #
 # Setup Flask-Security
@@ -268,8 +277,8 @@ class UserModelView(RestrictedModelView):
     column_editable_list = ['roles']
 
 class InvoiceModelView(RestrictedModelView):
-    column_formatters = dict(amount=_format_amount, amount_receive=_format_amount)
-    column_labels = dict(amount='ZAP Amount', amount_receive='NZD Amount')
+    column_formatters = dict(amount=_format_amount, amount_zap=_format_amount)
+    column_labels = dict(amount='NZD Amount', amount_zap='ZAP Amount')
 
 class UtilityModelView(RestrictedModelView):
     can_create = True

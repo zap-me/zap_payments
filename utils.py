@@ -3,6 +3,7 @@ import binascii
 import hmac
 import hashlib
 import base64
+import re
 
 def generate_key(num=20):
     return binascii.hexlify(os.urandom(num)).decode()
@@ -26,3 +27,8 @@ def check_hmac_auth(api_key, nonce, sig, body):
         api_key.nonce = nonce
         return True, ""
     return False, "invalid signature"
+
+def is_email(email):
+    if not re.match("[^@]+@[^@]+\.[^@]+", email):
+        return False
+    return True

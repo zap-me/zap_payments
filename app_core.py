@@ -30,6 +30,8 @@ if os.getenv("PRODUCTION"):
 if os.getenv("DATABASE_URL"):
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
+if os.getenv("SERVER_NAME"):
+    app.config["SERVER_NAME"] = os.getenv("SERVER_NAME")
 if os.getenv("SESSION_KEY"):
     app.config["SECRET_KEY"] = os.getenv("SESSION_KEY")
 if os.getenv("PASSWORD_SALT"):

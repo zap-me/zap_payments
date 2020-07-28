@@ -47,8 +47,14 @@
                     <input type="hidden" name="zbp_bank_index" value="{{vars.bank_index}}"/>
                     <input type="hidden" name="zbp_state" value="{{status}}"/>
                     <div class="form-group">
-                        <label for="zbp_amount">Amount NZD</label>
+                        <label for="zbp_email">Email Address</label>
+                        <input class="form-control" name="zbp_email" id="zbp_email" type="text" value="{{email}}" step="0.01" {{vars.readonly}}/>
+                        <small id="email-desc" class="form-text text-muted">Receive notifications about this payment (optional)</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="zbp_amount">Amount</label>
                         <input class="form-control" name="zbp_amount" id="zbp_amount" type="number" value="{{amount}}" step="0.01" {{vars.readonly}}/>
+                        <small id="amount-desc" class="form-text text-muted">NZD amount to pay</small>
                     </div>
                     {% for field in bank.fields %}
                         {% set max = "max=%d" % field.max if "max" in field else "" %}

@@ -15,15 +15,16 @@ from flask import url_for, redirect, render_template, request, abort, jsonify, M
 from flask_security.utils import encrypt_password
 from flask_socketio import Namespace, emit, join_room, leave_room
 from flask_security import current_user
+from flask_mail import Message
 import werkzeug
 import requests
 import qrcode
 import qrcode.image.svg
 
-from app_core import app, db, socketio, aw, timer
+from app_core import app, db, mail, socketio, aw, timer
 from models import security, user_datastore, Role, User, Invoice, Utility
 import admin
-from utils import check_hmac_auth, generate_key
+from utils import check_hmac_auth, generate_key, is_email
 
 logger = logging.getLogger(__name__)
 ws_invoices = {}
@@ -152,15 +153,31 @@ def transfer_tx_callback(tokens, tx):
         print("sending 'tx' event to room %s" % token)
         socketio.emit("tx", txt, json=True, room=token)
 
-def timer_callback():
-    print("timer_callback()..")
+def ws_invoices_timer_callback():
+    #print("ws_invoices_timer_callback()..")
     for token in ws_invoices.keys():
-        print("timer_callback: token: {}".format(token))
+        print("ws_invoices_timer_callback: token: {}".format(token))
         invoice = Invoice.from_token(db.session, token)
         if invoice:
             order = bronze_order_status(invoice)
             if order:
                 socketio.emit("order_status", order["status"], room=token)
+
+def email_invoices_timer_callback():
+    print("email_invoices_timer_callback()..")
+    with app.app_context():
+        invoices = Invoice.all_with_email_and_not_terminated(db.session)
+        for invoice in invoices:
+            order = bronze_order_status(invoice)
+            if order:
+                if invoice.status != order["status"]:
+                    # send email
+                    msg = Message('ZAP bill payment status updated', recipients=[invoice.email])
+                    msg.body = 'Invoice {} updated'.format(url_for("invoice", token=invoice.token))
+                    mail.send(msg)
+                    # update invoice object
+                    invoice.status = order["status"]
+                    db.session.commit()
 
 def qrcode_svg_create(data):
     factory = qrcode.image.svg.SvgPathImage
@@ -174,7 +191,8 @@ def qrcode_svg_create(data):
 def start_address_watcher():
     aw.transfer_tx_callback = transfer_tx_callback
     aw.start()
-    timer.callback = timer_callback
+    timer.add_timer(ws_invoices_timer_callback, 60)
+    timer.add_timer(email_invoices_timer_callback, 600)
     timer.start()
 
 def bad_request(message):
@@ -308,6 +326,11 @@ def validate_amount(amount):
         return "amount must be greater then zero"
     return None
 
+def validate_email(email):
+    if email and not is_email(email):
+        return "invalid email address"
+    return None
+
 def validate_values(bank_description_item, values):
     for field in bank_description_item["fields"]:
         name = field["label"]
@@ -344,7 +367,7 @@ def bank_transaction_details(bank_description_item, values):
             details[target] = value
     return details
 
-def invoice_create(utility, details, amount):
+def invoice_create(utility, details, email, amount):
     # init bank recipient params
     bank_account = details["bank_account"]
     reference = details["reference"] if "reference" in details else ""
@@ -362,7 +385,8 @@ def invoice_create(utility, details, amount):
     broker_token = body["token"]
     amount_cents_zap = int(decimal.Decimal(body["amountSend"]) * 100)
     amount_cents_nzd = int(decimal.Decimal(body["amountReceive"]) * 100)
-    invoice = Invoice(amount_cents_nzd, amount_cents_zap, broker_token)
+    status = body["status"]
+    invoice = Invoice(email, amount_cents_nzd, amount_cents_zap, broker_token, status)
     db.session.add(invoice)
     db.session.commit()
     return invoice, None
@@ -379,27 +403,32 @@ def utility():
         bank_index = int(request.form.get("zbp_bank_index"))
         bank_desc = utility.bank_description_json[bank_index]
         status = request.form.get("zbp_state")
+        email = request.form.get("zbp_email")
         amount = request.form.get("zbp_amount")
         values = request.form
         error = None
         if status == STATUS_CREATE:
-            error = validate_amount(amount)
+            error = validate_email(email)
+            if not error:
+                error = validate_amount(amount)
             if not error:
                 error = validate_values(bank_desc, values)
             if not error:
                 status = STATUS_CHECK
         elif status == STATUS_CHECK:
-            error = validate_amount(amount)
+            error = validate_email(email)
+            if not error:
+                error = validate_amount(amount)
             if not error:
                 error = validate_values(bank_desc, values)
             if not error:
                 details = bank_transaction_details(bank_desc, values)
-                invoice, err = invoice_create(utility, details, amount)
+                invoice, err = invoice_create(utility, details, email, amount)
                 if invoice:
                     return redirect(url_for("invoice", token=invoice.token))
                 else:
                     error = "failed to create invoice ({})".format(err)
-        return render_template("utility.html", utility=utility, selected_bank_name=bank_desc["name"], status=status, amount=amount, values=values, error=error)
+        return render_template("utility.html", utility=utility, selected_bank_name=bank_desc["name"], status=status, email=email, amount=amount, values=values, error=error)
     else:
         return render_template("utility.html", utility=utility, status=STATUS_CREATE, values=werkzeug.MultiDict())
 
