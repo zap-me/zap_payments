@@ -10,6 +10,7 @@ import hashlib
 import base64
 import io
 import re
+import urllib.parse
 
 from flask import url_for, redirect, render_template, request, abort, jsonify, Markup
 from flask_security.utils import encrypt_password
@@ -169,9 +170,13 @@ def email_invoices_timer_callback():
             order = bronze_order_status(invoice)
             if order:
                 if invoice.status != order["status"]:
+                    invoice_url = url_for("invoice", token=invoice.token)
+                    hostname = urllib.parse.urlparse(app.config["SERVER_NAME"]).hostname
+                    sender = "no-reply@" + hostname
                     # send email
-                    msg = Message('ZAP bill payment status updated', recipients=[invoice.email])
-                    msg.body = 'Invoice {} updated'.format(url_for("invoice", token=invoice.token))
+                    msg = Message('ZAP bill payment status updated', sender=sender, recipients=[invoice.email])
+                    msg.html = 'Invoice <a href="{}">{}</a> has updated to status "{}"'.format(invoice_url, invoice.token, order["status"])
+                    msg.body = 'Invoice {} has updated to status {}'.format(invoice_url, order["status"])
                     mail.send(msg)
                     # update invoice object
                     invoice.status = order["status"]
@@ -486,6 +491,9 @@ if __name__ == "__main__":
             sys.exit(1)
         if "BRONZE_API_SECRET" not in app.config:
             logger.error("BRONZE_API_SECRET does not exist")
+            sys.exit(1)
+        if "SERVER_NAME" not in app.config:
+            logger.error("SERVER_NAME does not exist")
             sys.exit(1)
 
         # Bind to PORT if defined, otherwise default to 5000.
