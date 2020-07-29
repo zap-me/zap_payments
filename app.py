@@ -460,6 +460,8 @@ def invoice():
         attachment = json.dumps(dict(InvoiceId=invoice_id))
         url = "waves://{}?asset={}&amount={}&attachment={}".format(payment_address, app.config["ASSET_ID"], invoice.amount_zap, attachment)
         qrcode_svg = qrcode_svg_create(url)
+        # change links to match zap app :/
+        url = "zap" + url[5:]
     #TODO: other statuses..
     return render_template("invoice.html", invoice=invoice, order=order, error=error, qrcode_svg=qrcode_svg, url=url)
 
