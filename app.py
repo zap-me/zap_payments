@@ -171,7 +171,7 @@ def email_invoices_timer_callback():
             if order:
                 if invoice.status != order["status"]:
                     invoice_url = url_for("invoice", token=invoice.token)
-                    hostname = urllib.parse.urlparse(app.config["SERVER_NAME"]).hostname
+                    hostname = urllib.parse.urlparse(invoice_url).hostname
                     sender = "no-reply@" + hostname
                     # send email
                     msg = Message('ZAP bill payment status updated', sender=sender, recipients=[invoice.email])
