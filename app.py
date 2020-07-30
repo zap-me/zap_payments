@@ -194,8 +194,8 @@ def qrcode_svg_create(data):
 def start_address_watcher():
     aw.transfer_tx_callback = transfer_tx_callback
     aw.start()
-    timer.add_timer(ws_invoices_timer_callback, 60)
-    timer.add_timer(email_invoices_timer_callback, 600)
+    timer.add_timer(ws_invoices_timer_callback, app.config["INVOICE_WS_SECONDS"])
+    timer.add_timer(email_invoices_timer_callback, app.config["INVOICE_EMAIL_SECONDS"])
     timer.start()
 
 def bad_request(message):
