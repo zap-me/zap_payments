@@ -97,9 +97,9 @@ class Invoice(db.Model):
     bronze_broker_token = db.Column(db.String(255), nullable=False)
     status = db.Column(db.String(255))
     tx_seen = db.Column(db.Boolean, nullable=False)
-    bank_name = db.Column(db.String(255))
+    utility_name = db.Column(db.String(255))
 
-    def __init__(self, email, amount, amount_zap, bronze_broker_token, status, bank_name):
+    def __init__(self, email, amount, amount_zap, bronze_broker_token, status, utility_name):
         self.generate_defaults()
         self.email = email
         self.amount = amount
@@ -107,7 +107,7 @@ class Invoice(db.Model):
         self.bronze_broker_token = bronze_broker_token
         self.status = status
         self.tx_seen = False
-        self.bank_name = bank_name
+        self.utility_name = utility_name
 
     def generate_defaults(self):
         self.date = datetime.datetime.now()
