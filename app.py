@@ -176,8 +176,8 @@ def email_invoices_timer_callback():
                     formatted_amount = '{0:0.2f}'.format(invoice.amount/100.0)
                     # send email
                     msg = Message('ZAP bill payment status updated', sender=sender, recipients=[invoice.email])
-                    msg.html = 'Invoice <a href="{}">{}</a> has updated the {} invoice with the amount of ${} to status "{}"'.format(invoice_url, invoice.token, invoice.bank_name, formatted_amount, order["status"])
-                    msg.body = 'Invoice {} has updated the {} invoice with the amount of ${} to status {}'.format(invoice_url, invoice.bank_name, formatted_amount, order["status"])
+                    msg.html = 'Invoice <a href="{}">{}</a> has updated the {} invoice with the amount of ${} to status "{}"'.format(invoice_url, invoice.token, invoice.utility_name, formatted_amount, order["status"])
+                    msg.body = 'Invoice {} has updated the {} invoice with the amount of ${} to status {}'.format(invoice_url, invoice.utility_name, formatted_amount, order["status"])
                     mail.send(msg)
                     # update invoice object
                     invoice.status = order["status"]
@@ -371,7 +371,7 @@ def bank_transaction_details(bank_description_item, values):
             details[target] = value
     return details
 
-def invoice_create(utility, details, email, amount, bank_name):
+def invoice_create(utility, details, email, amount, utility_name):
     # init bank recipient params
     bank_account = details["bank_account"]
     reference = details["reference"] if "reference" in details else ""
@@ -390,7 +390,7 @@ def invoice_create(utility, details, email, amount, bank_name):
     amount_cents_zap = int(decimal.Decimal(body["amountSend"]) * 100)
     amount_cents_nzd = int(decimal.Decimal(body["amountReceive"]) * 100)
     status = body["status"]
-    invoice = Invoice(email, amount_cents_nzd, amount_cents_zap, broker_token, status, bank_name)
+    invoice = Invoice(email, amount_cents_nzd, amount_cents_zap, broker_token, status, utility_name)
     db.session.add(invoice)
     db.session.commit()
     return invoice, None
@@ -409,7 +409,7 @@ def utility():
         status = request.form.get("zbp_state")
         email = request.form.get("zbp_email")
         amount = request.form.get("zbp_amount")
-        bank_name = request.form.get("zbp_bank_name")
+        utility_name = request.form.get("zbp_utility_name")
         values = request.form
         error = None
         if status == STATUS_CREATE:
@@ -428,12 +428,12 @@ def utility():
                 error = validate_values(bank_desc, values)
             if not error:
                 details = bank_transaction_details(bank_desc, values)
-                invoice, err = invoice_create(utility, details, email, amount, bank_name)
+                invoice, err = invoice_create(utility, details, email, amount, utility_name)
                 if invoice:
                     return redirect(url_for("invoice", token=invoice.token))
                 else:
                     error = "failed to create invoice ({})".format(err)
-        return render_template("utility.html", utility=utility, selected_bank_name=bank_desc["name"], status=status, email=email, amount=amount, bank_name=bank_name, values=values, error=error)
+        return render_template("utility.html", utility=utility, selected_bank_name=bank_desc["name"], status=status, email=email, amount=amount, utility_name=utility_name, values=values, error=error)
     else:
         return render_template("utility.html", utility=utility, status=STATUS_CREATE, values=werkzeug.MultiDict())
 
