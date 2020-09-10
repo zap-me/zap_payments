@@ -40,6 +40,9 @@
             {% endif %}
             <br/>
             Expiry: <span id="expiry"></span>
+	    {% set formatted_amount = '{0:0.2f}'.format(invoice.amount/100.0) %}
+	    <br/>Utility Name: {{invoice.utility_name}}
+	    <br/>Amount: ${{formatted_amount}}
         </div>
         {% elif order.status == invoice.STATUS_INCOMING %}
         <div class="card-body">
