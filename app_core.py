@@ -30,6 +30,8 @@ if os.getenv("PRODUCTION"):
 if os.getenv("DATABASE_URL"):
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
+if os.getenv("SERVER_NAME"):
+    app.config["SERVER_NAME"] = os.getenv("SERVER_NAME")
 if os.getenv("SESSION_KEY"):
     app.config["SECRET_KEY"] = os.getenv("SESSION_KEY")
 if os.getenv("PASSWORD_SALT"):
@@ -40,6 +42,12 @@ if os.getenv("BRONZE_API_KEY"):
     app.config["BRONZE_API_KEY"] = os.getenv("BRONZE_API_KEY")
 if os.getenv("BRONZE_API_SECRET"):
     app.config["BRONZE_API_SECRET"] = os.getenv("BRONZE_API_SECRET")
+app.config["INVOICE_EMAIL_SECONDS"] = 600
+if os.getenv("INVOICE_EMAIL_SECONDS"):
+    app.config["INVOICE_EMAIL_SECONDS"] = int(os.getenv("INVOICE_EMAIL_SECONDS"))
+app.config["INVOICE_WS_SECONDS"] = 60
+if os.getenv("INVOICE_WS_SECONDS"):
+    app.config["INVOICE_WS_SECONDS"] = int(os.getenv("INVOICE_WS_SECONDS"))
 db = SQLAlchemy(app)
 mail = MailSendGrid(app)
 socketio = SocketIO(app)

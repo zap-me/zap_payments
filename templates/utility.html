@@ -1,6 +1,8 @@
 {% extends "layout.html" %}
 
 {% block content %}
+    <div class="row justify-content-center">
+    <div class="col-sm-6">
     {% if status == "check" %}
     <div class="alert alert-warning" role="alert">
         Check the values are correct
@@ -43,12 +45,19 @@
             {% for bank in utility.bank_description_json %}
             <div id="bank_{{bank.name}}" class="bank_form" style="display: {{'block' if bank.name == selected_bank_name or not selected_bank_name and vars.bank_index == 0 else 'none'}}"> 
                 <hr/>
-                <form class="form-payment" method="post">
+                <form method="post">
                     <input type="hidden" name="zbp_bank_index" value="{{vars.bank_index}}"/>
+                    <input type="hidden" name="zbp_utility_name" value="{{utility.name}}"/>
                     <input type="hidden" name="zbp_state" value="{{status}}"/>
                     <div class="form-group">
-                        <label for="zbp_amount">Amount NZD</label>
+                        <label for="zbp_email">Email Address</label>
+                        <input class="form-control" name="zbp_email" id="zbp_email" type="text" value="{{email}}" step="0.01" {{vars.readonly}}/>
+                        <small id="email-desc" class="form-text text-muted">Receive notifications about this payment (optional)</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="zbp_amount">Amount</label>
                         <input class="form-control" name="zbp_amount" id="zbp_amount" type="number" value="{{amount}}" step="0.01" {{vars.readonly}}/>
+                        <small id="amount-desc" class="form-text text-muted">NZD amount to pay</small>
                     </div>
                     {% for field in bank.fields %}
                         {% set max = "max=%d" % field.max if "max" in field else "" %}
@@ -68,5 +77,7 @@
             </div>
             {% endfor %}
         </div>
+    </div>
+    </div>
     </div>
 {% endblock %}

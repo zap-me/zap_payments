@@ -10,20 +10,22 @@ import hashlib
 import base64
 import io
 import re
+import urllib.parse
 
 from flask import url_for, redirect, render_template, request, abort, jsonify, Markup
 from flask_security.utils import encrypt_password
 from flask_socketio import Namespace, emit, join_room, leave_room
 from flask_security import current_user
+from flask_mail import Message
 import werkzeug
 import requests
 import qrcode
 import qrcode.image.svg
 
-from app_core import app, db, socketio, aw, timer
+from app_core import app, db, mail, socketio, aw, timer
 from models import security, user_datastore, Role, User, Invoice, Utility
 import admin
-from utils import check_hmac_auth, generate_key
+from utils import check_hmac_auth, generate_key, is_email
 
 logger = logging.getLogger(__name__)
 ws_invoices = {}
@@ -101,15 +103,13 @@ def bronze_request(endpoint, params):
     # create request
     headers = {"Content-Type": "application/json", "X-Signature": signature}
     url = app.config["BRONZE_ADDRESS"] + "/api/v1/" + endpoint
-    print(":: requesting %s.." % url)
+    #print(":: requesting %s.." % url)
     r = requests.post(url, headers=headers, data=body)
     try:
         r.raise_for_status()
     except:
         print("ERROR: response http status %d (%s)" % (r.status_code, r.content))
         return None, r.content.decode("utf-8")
-    print(r.status_code)
-    print(r.content)
     return r, None
 
 def bronze_order_status(invoice):
@@ -152,15 +152,36 @@ def transfer_tx_callback(tokens, tx):
         print("sending 'tx' event to room %s" % token)
         socketio.emit("tx", txt, json=True, room=token)
 
-def timer_callback():
-    print("timer_callback()..")
+def ws_invoices_timer_callback():
+    #print("ws_invoices_timer_callback()..")
     for token in ws_invoices.keys():
-        print("timer_callback: token: {}".format(token))
+        #print("ws_invoices_timer_callback: token: {}".format(token))
         invoice = Invoice.from_token(db.session, token)
         if invoice:
             order = bronze_order_status(invoice)
             if order:
                 socketio.emit("order_status", order["status"], room=token)
+
+def email_invoices_timer_callback():
+    print("email_invoices_timer_callback()..")
+    with app.app_context():
+        invoices = Invoice.all_with_email_and_not_terminated(db.session)
+        for invoice in invoices:
+            order = bronze_order_status(invoice)
+            if order:
+                if invoice.status != order["status"]:
+                    invoice_url = url_for("invoice", token=invoice.token)
+                    hostname = urllib.parse.urlparse(invoice_url).hostname
+                    sender = "no-reply@" + hostname
+                    formatted_amount = '{0:0.2f}'.format(invoice.amount/100.0)
+                    # send email
+                    msg = Message('ZAP bill payment status updated', sender=sender, recipients=[invoice.email])
+                    msg.html = 'Invoice <a href="{}">{}</a> has updated the {} invoice with the amount of ${} to status "{}"'.format(invoice_url, invoice.token, invoice.utility_name, formatted_amount, order["status"])
+                    msg.body = 'Invoice {} has updated the {} invoice with the amount of ${} to status {}'.format(invoice_url, invoice.utility_name, formatted_amount, order["status"])
+                    mail.send(msg)
+                    # update invoice object
+                    invoice.status = order["status"]
+                    db.session.commit()
 
 def qrcode_svg_create(data):
     factory = qrcode.image.svg.SvgPathImage
@@ -174,7 +195,8 @@ def qrcode_svg_create(data):
 def start_address_watcher():
     aw.transfer_tx_callback = transfer_tx_callback
     aw.start()
-    timer.callback = timer_callback
+    timer.add_timer(ws_invoices_timer_callback, app.config["INVOICE_WS_SECONDS"])
+    timer.add_timer(email_invoices_timer_callback, app.config["INVOICE_EMAIL_SECONDS"])
     timer.start()
 
 def bad_request(message):
@@ -308,6 +330,11 @@ def validate_amount(amount):
         return "amount must be greater then zero"
     return None
 
+def validate_email(email):
+    if email and not is_email(email):
+        return "invalid email address"
+    return None
+
 def validate_values(bank_description_item, values):
     for field in bank_description_item["fields"]:
         name = field["label"]
@@ -344,7 +371,7 @@ def bank_transaction_details(bank_description_item, values):
             details[target] = value
     return details
 
-def invoice_create(utility, details, amount):
+def invoice_create(utility, details, email, amount, utility_name):
     # init bank recipient params
     bank_account = details["bank_account"]
     reference = details["reference"] if "reference" in details else ""
@@ -362,7 +389,8 @@ def invoice_create(utility, details, amount):
     broker_token = body["token"]
     amount_cents_zap = int(decimal.Decimal(body["amountSend"]) * 100)
     amount_cents_nzd = int(decimal.Decimal(body["amountReceive"]) * 100)
-    invoice = Invoice(amount_cents_nzd, amount_cents_zap, broker_token)
+    status = body["status"]
+    invoice = Invoice(email, amount_cents_nzd, amount_cents_zap, broker_token, status, utility_name)
     db.session.add(invoice)
     db.session.commit()
     return invoice, None
@@ -379,27 +407,33 @@ def utility():
         bank_index = int(request.form.get("zbp_bank_index"))
         bank_desc = utility.bank_description_json[bank_index]
         status = request.form.get("zbp_state")
+        email = request.form.get("zbp_email")
         amount = request.form.get("zbp_amount")
+        utility_name = request.form.get("zbp_utility_name")
         values = request.form
         error = None
         if status == STATUS_CREATE:
-            error = validate_amount(amount)
+            error = validate_email(email)
+            if not error:
+                error = validate_amount(amount)
             if not error:
                 error = validate_values(bank_desc, values)
             if not error:
                 status = STATUS_CHECK
         elif status == STATUS_CHECK:
-            error = validate_amount(amount)
+            error = validate_email(email)
+            if not error:
+                error = validate_amount(amount)
             if not error:
                 error = validate_values(bank_desc, values)
             if not error:
                 details = bank_transaction_details(bank_desc, values)
-                invoice, err = invoice_create(utility, details, amount)
+                invoice, err = invoice_create(utility, details, email, amount, utility_name)
                 if invoice:
                     return redirect(url_for("invoice", token=invoice.token))
                 else:
                     error = "failed to create invoice ({})".format(err)
-        return render_template("utility.html", utility=utility, selected_bank_name=bank_desc["name"], status=status, amount=amount, values=values, error=error)
+        return render_template("utility.html", utility=utility, selected_bank_name=bank_desc["name"], status=status, email=email, amount=amount, utility_name=utility_name, values=values, error=error)
     else:
         return render_template("utility.html", utility=utility, status=STATUS_CREATE, values=werkzeug.MultiDict())
 
@@ -407,6 +441,7 @@ def utility():
 def invoice():
     error = None
     qrcode_svg = None
+    url = None
     token = request.args.get("token")
     invoice = Invoice.from_token(db.session, token)
     if not invoice:
@@ -432,8 +467,10 @@ def invoice():
         attachment = json.dumps(dict(InvoiceId=invoice_id))
         url = "waves://{}?asset={}&amount={}&attachment={}".format(payment_address, app.config["ASSET_ID"], invoice.amount_zap, attachment)
         qrcode_svg = qrcode_svg_create(url)
+        # change links to match zap app :/
+        url = "zap" + url[5:]
     #TODO: other statuses..
-    return render_template("invoice.html", invoice=invoice, order=order, error=error, qrcode_svg=qrcode_svg)
+    return render_template("invoice.html", invoice=invoice, order=order, error=error, qrcode_svg=qrcode_svg, url=url)
 
 if __name__ == "__main__":
     setup_logging(logging.DEBUG)
@@ -457,6 +494,9 @@ if __name__ == "__main__":
         if "BRONZE_API_SECRET" not in app.config:
             logger.error("BRONZE_API_SECRET does not exist")
             sys.exit(1)
+        if "SERVER_NAME" not in app.config:
+            logger.error("SERVER_NAME does not exist")
+            sys.exit(1)
 
         # Bind to PORT if defined, otherwise default to 5000.
         port = int(os.environ.get("PORT", 5000))
@@ -468,3 +508,4 @@ if __name__ == "__main__":
         # stop timer
         if timer:
             timer.kill()
+
