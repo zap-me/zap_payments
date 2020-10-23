@@ -21,6 +21,7 @@ import werkzeug
 import requests
 import qrcode
 import qrcode.image.svg
+from bronze import make_bronze_blueprint, bronze
 
 from app_core import app, db, mail, socketio, aw, timer
 from models import security, user_datastore, Role, User, Invoice, Utility
@@ -31,6 +32,9 @@ logger = logging.getLogger(__name__)
 ws_invoices = {}
 ws_sids = {}
 MAX_DETAIL_CHARS = 12
+
+bronze_blueprint = make_bronze_blueprint('balance kyc', redirect_url='/bronze_oauth')
+app.register_blueprint(bronze_blueprint, url_prefix='/bronze_login')
 
 #
 # Helper functions
@@ -318,7 +322,50 @@ socketio.on_namespace(SocketIoNamespace("/"))
 @app.route("/utilities")
 def utilities():
     utilities = Utility.all_alphabetical(db.session)
-    return render_template("utilities.html", utilities=utilities)
+    if not bronze.authorized:
+        print('*Redirecting to OAuth')
+        #return render_template("utilities.html", utilities=utilities)
+        return redirect(url_for('bronze_oauth'))
+    else:
+        print('*Already Authorized')
+    #    #return redirect(url_for('bronze_oauth'))
+        #return render_template("utilities.html", utilities=utilities)
+        return redirect(url_for('bronze_oauth'))
+    #return render_template("utilities.html", utilities=utilities)
+#    if not bronze.authorized:
+#        #return redirect(url_for('bronze.login'))
+#        return render_template('utilities.html', utilities=utilities)
+#    res = ''
+#    balance = bronze_blueprint.session.get('AccountBalance')
+#    balance_content = balance.json()
+#    #zap_balance = str(balance_content['assets']['ZAP'])
+#    #nzd_balance = str(balance_content['assets']['NZD'])
+#    if balance.ok:
+#        res += '<p>Your balance is {}</p>'.format(balance.content)
+#    else:
+#        res += '<h1>Failed to get balance</h1>'
+#    kyc = bronze_blueprint.session.get('AccountKyc')
+#    print(kyc.content)
+#    kyc_info = kyc.json()
+#    level = kyc_info['level']
+#    #if not level < '2':
+#    #    print('its ok to proceed')
+#    #else:
+#    #    print('You need to increase KYC Level')
+#    if kyc.ok:
+#        if not level < '2':
+#            res+= 'KYC level(acceptable): {}'.format(level)
+#        #res += '<p>Your kyc status is {}</p>'.format(kyc.content)
+#        else:
+#            res+= 'KYC level(unacceptable): {}'.format(level)
+#    else:
+#        res += '<h1>Failed to get kyc</h1>'
+#
+#    #return res
+#    if bronze.authorized:
+#        #return render_template('bronze_oauth.html', bronze_auth=bronze.authorized, balance_info=balance_content, kyc_info=kyc_info)
+#        return render_template('utilities.html', utilities=utilities, bronze_auth=bronze.authorized, balance_info=balance_content, kyc_info=kyc_info)
+
 
 def validate_amount(amount):
     try:
@@ -400,6 +447,12 @@ def utility():
     STATUS_CREATE = "create"
     STATUS_CHECK = "check"
 
+    if not bronze.authorized:
+        print('*Redirecting to OAuth')
+        return redirect(url_for('bronze.login'))
+    else:
+        print('Already Authorized')
+
     utility_id = int(request.args.get("utility"))
     utility = Utility.from_id(db.session, utility_id)
     Utility.jsonify_bank_descriptions([utility])
@@ -471,6 +524,42 @@ def invoice():
         url = "zap" + url[5:]
     #TODO: other statuses..
     return render_template("invoice.html", invoice=invoice, order=order, error=error, qrcode_svg=qrcode_svg, url=url)
+
+@app.route('/bronze_oauth')
+def bronze_oauth():
+    if not bronze.authorized:
+        return redirect(url_for('bronze.login'))
+    res = ''
+    balance = bronze_blueprint.session.get('AccountBalance')
+    balance_content = balance.json()
+    if balance.ok:
+        res += '<p>Your balance is {}</p>'.format(balance.content)
+    else:
+        res += '<h1>Failed to get balance</h1>'
+    kyc = bronze_blueprint.session.get('AccountKyc')
+    print(kyc.content)
+    kyc_info = kyc.json()
+    level = kyc_info['level']
+    if kyc.ok:
+        if not level < '2':
+            res+= 'KYC level(acceptable): {}'.format(level)
+        else:
+            res+= 'KYC level(unacceptable): {}'.format(level)
+    else:
+        res += '<h1>Failed to get kyc</h1>'
+
+    #return res
+    if bronze.authorized:
+        utilities = Utility.all_alphabetical(db.session)
+        return render_template('utilities.html', utilities=utilities, bronze_auth=bronze.authorized, balance_info=balance_content, kyc_info=kyc_info)
+
+@app.route("/bronze_logout")
+def logout():
+    #print('Printing the token below')
+    #print('Deleting token: ' + bronze_blueprint.token['access_token'] + '.')
+    del bronze_blueprint.token
+
+    return redirect(url_for('utilities'))
 
 if __name__ == "__main__":
     setup_logging(logging.DEBUG)

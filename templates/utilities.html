@@ -1,6 +1,15 @@
 {% extends "layout.html" %}
 
 {% block content %}
+{% if not bronze_auth %}
+<div class="row justify-content-center">
+<div class="col-sm-6">
+    <img class="mb-4" src="https://zap.me/app/themes/zap/assets/public/images/logo-footer.svg" alt="" width="72" height="72">
+    <h1 class="h3 mb-3 font-weight-normal">Login Required: </h1>
+    <button class="btn btn-lg btn-primary btn-block" type="button" onclick="window.location.href='/bronze_oauth'"/>OAuth Login</button>
+</div>
+</div>
+{% else %}
 <div class="row justify-content-center">
 <div class="col-sm-6">
 <form action="/utility">
@@ -14,8 +23,10 @@
             {% endfor %}
         </select>
     </div>
-    <button class="btn btn-lg btn-primary btn-block" type="submit">Submit</button>
+    <button class="btn btn-lg btn-primary btn-block" type="submit">Submit</button></br>
+    <button class="btn btn-lg btn-primary btn-block" type="button" onclick="window.location.href='bronze_logout'"/>OAuth Logout</button></br>
 </form>
 </div>
 </div>
+{% endif %}
 {% endblock %}

@@ -222,12 +222,6 @@ def fields_check(fields):
             lst = [target_type for target_type, target_check_fn in valid_target_types]
             raise ValidationError('"{}" is not one of "{}"'.format(TARGET, lst))
 
-<<<<<<< HEAD
-class _json_beautifier(vie, context, model, name):
-    if name == 'fields_description':
-        json_format_beaut = jsbeautifier.beautify(fields_description)
-        return json_format_beaut
-=======
 def bank_description_check(form, field):
     ACCOUNT_NUMBER = 'account_number'
     FIELDS = 'fields'
@@ -249,7 +243,6 @@ def bank_description_check(form, field):
         if not isinstance(item[FIELDS], list):
             raise ValidationError('"{}" is not a list/array'.format(FIELDS))
         fields_check(item[FIELDS])
->>>>>>> c467f6387cade7fdeb9c49c10cf94e66b41c203e
 
 class ReloadingIterator:
     def __init__(self, iterator_factory):

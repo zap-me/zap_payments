@@ -72,6 +72,7 @@
                         </div>
                     {% endfor %}
                     <button class="btn btn-lg btn-primary btn-block" type="submit">{{'Submit' if status == 'create' else 'The values are correct'}}</button>
+		    <button class="btn btn-lg btn-primary btn-block" type="button" onclick="window.location.href='bronze_logout'"/>OAuth Logout</button></br>
                 </form>
                 {% if vars.update({"bank_index": vars.bank_index + 1}) %} {% endif %}
             </div>
