@@ -17,7 +17,19 @@
     {% set vars = {"readonly": "readonly" if status == "check" else "", "bank_index": 0} %}
 
     <div class="card">
+    {% if kyc_info['level'] < '2' %}
+    <p> level: {{ kyc_info['level'] }} <font color="red"> * KYC NEEDED </font></p>
+
+    Please login to the exchange.
+    {% else %}
         <div class="card-header">
+            <h3 class="card-title">{{userinfo.email}}</h3>
+	    <p class="card-text">level: {{ kyc_info['level'] }}</p>
+	    <p class="card-text">withdrawal: {{ kyc_info['withdrawalLimit'] }}</p>
+	    <p class="card-text">asset: {{ kyc_info['withdrawalAsset'] }}</p>
+	    <p class="card-text">period: {{ kyc_info['withdrawalPeriod'] }}</p>
+	    <p class="card-text">total: {{ kyc_info['withdrawalTotal'] }}</p>
+	    </br>
             <h3 class="card-title">{{utility.name}}</h3>
             <p class="card-text">{{utility.description | urls_to_links}}</p>
         </div>
@@ -78,6 +90,7 @@
             </div>
             {% endfor %}
         </div>
+    {% endif %}
     </div>
     </div>
     </div>

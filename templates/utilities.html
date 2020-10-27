@@ -14,17 +14,34 @@
 <div class="col-sm-6">
 <form action="/utility">
     <img class="mb-4" src="https://zap.me/app/themes/zap/assets/public/images/logo-footer.svg" alt="" width="72" height="72">
-    <h1 class="h3 mb-3 font-weight-normal">Please choose a utility</h1>
-    <div class="form-group">
-        <label for="utility">Utilities:</label>
-        <select name="utility" id="utility" class="form-control">
-            {% for utility in utilities %}
-            <option value="{{utility.id}}">{{utility.name}}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <button class="btn btn-lg btn-primary btn-block" type="submit">Submit</button></br>
-    <button class="btn btn-lg btn-primary btn-block" type="button" onclick="window.location.href='bronze_logout'"/>OAuth Logout</button></br>
+    <h1 class="h3 mb-3 font-weight-normal">Welcome {{ userinfo.email }},</h1></br>
+    <p>ASSETS:
+    <li>ZAP: {{ balance_info['assets']['ZAP'] }}</li>
+    <li>NZD: {{ balance_info['assets']['NZD'] }}</li>
+    </p>
+    <p>KYC:</br>
+    {% if kyc_info['level'] < '2' %}
+    <p>level: {{ kyc_info['level'] }} <font color="red">    * KYC NEEDED </font></p>
+    {% else %}
+        <li>level: {{ kyc_info['level'] }}</li>
+	<li>withdrawal: {{ kyc_info['withdrawalLimit'] }}</li>
+	<li>asset: {{ kyc_info['withdrawalAsset'] }}</li>
+	<li>period: {{ kyc_info['withdrawalPeriod'] }}</li>
+	<li>total: {{ kyc_info['withdrawalTotal'] }}</li>
+	</p>
+	<br>
+	<div class="form-group">
+	<h1 class="h3 mb-3 font-weight-normal">Please choose a utility</h1>
+	    <label for="utility">Utilities:</label>
+	    <select name="utility" id="utility" class="form-control">
+	        {% for utility in utilities %}
+	        <option value="{{utility.id}}">{{utility.name}}</option>
+	        {% endfor %}
+	    </select>
+	</div>
+	<button class="btn btn-lg btn-primary btn-block" type="submit">Submit</button></br>
+	<button class="btn btn-lg btn-primary btn-block" type="button" onclick="window.location.href='bronze_logout'"/>OAuth Logout</button></br>
+    {% endif %}
 </form>
 </div>
 </div>
