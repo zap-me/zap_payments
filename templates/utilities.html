@@ -5,16 +5,30 @@
 <div class="col-sm-6">
 <form action="/utility">
     <img class="mb-4" src="https://zap.me/app/themes/zap/assets/public/images/logo-footer.svg" alt="" width="72" height="72">
-    <h1 class="h3 mb-3 font-weight-normal">Please choose a utility</h1>
-    <div class="form-group">
-        <label for="utility">Utilities:</label>
-        <select name="utility" id="utility" class="form-control">
-            {% for utility in utilities %}
-            <option value="{{utility.id}}">{{utility.name}}</option>
-            {% endfor %}
-        </select>
+    {% if kyc_info['level'] < '2' %}
+    <div class="card-body">
+	<p>KYC LEVEL: {{ kyc_info['level'] }} <font color="red">Bronze user details not verified</font></p></br>
+	<button class="btn btn-lg btn-primary btn-block" type="button" onclick="window.location.href='{{ url }}'"/>Goto Bronze Exchange</button></br>
     </div>
-    <button class="btn btn-lg btn-primary btn-block" type="submit">Submit</button>
+    {% else %}
+	<div class="card">
+	    <p>Logged in as:   <font color="red">{{userinfo.email}}</font></p>
+	        {%- for message in get_flashed_messages() %}
+	            <font color="red"><center>{{ message }}</center></font>
+                {%- endfor %}
+	<button class="btn btn-sm btn-primary btn-block" type="button" onclick="window.location.href='bronze_logout'"/>Bronze OAuth Logout</button>
+	</div>
+	<div class="form-group">
+	<h1 class="h3 mb-3 font-weight-normal">Please choose a utility</h1>
+	    <label for="utility">Utilities:</label>
+	    <select name="utility" id="utility" class="form-control">
+	        {% for utility in utilities %}
+	        <option value="{{utility.id}}">{{utility.name}}</option>
+	        {% endfor %}
+	    </select>
+	</div>
+	<button class="btn btn-lg btn-primary btn-block" type="submit">Submit</button></br>
+    {% endif %}
 </form>
 </div>
 </div>

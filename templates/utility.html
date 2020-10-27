@@ -1,5 +1,4 @@
 {% extends "layout.html" %}
-
 {% block content %}
     <div class="row justify-content-center">
     <div class="col-sm-6">
@@ -13,11 +12,22 @@
         {{error}}
     </div>
     {% endif %}
-
     {% set vars = {"readonly": "readonly" if status == "check" else "", "bank_index": 0} %}
-
     <div class="card">
-        <div class="card-header">
+    {% if kyc_info['level'] < '2' %}
+    <div class="card-header">
+        <h1><center>KYC Verification</center></h1>
+    </div>
+    <div class="card-body">
+        <p>KYC LEVEL: {{ kyc_info['level'] }} <font color="red">Bronze user details not verified</font></p></br>
+        <button class="btn btn-lg btn-primary btn-block" type="button" onclick="window.location.href='{{ url }}'"/>Goto Bronze Exchange</button></br>
+    </div>
+    {% else %}
+        <div class="card">
+            <p>Logged in as:   <font color="red">{{userinfo.email}}</font></p>
+            <button class="btn btn-sm btn-primary btn-block" type="button" onclick="window.location.href='bronze_logout'"/>Bronze OAuth Logout</button>
+        </div>
+	<div class="card-header">
             <h3 class="card-title">{{utility.name}}</h3>
             <p class="card-text">{{utility.description | urls_to_links}}</p>
         </div>
@@ -77,6 +87,7 @@
             </div>
             {% endfor %}
         </div>
+    {% endif %}
     </div>
     </div>
     </div>

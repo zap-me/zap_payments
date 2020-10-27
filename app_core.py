@@ -48,6 +48,11 @@ if os.getenv("INVOICE_EMAIL_SECONDS"):
 app.config["INVOICE_WS_SECONDS"] = 60
 if os.getenv("INVOICE_WS_SECONDS"):
     app.config["INVOICE_WS_SECONDS"] = int(os.getenv("INVOICE_WS_SECONDS"))
+if os.getenv("CLIENT_ID"):
+    app.config["CLIENT_ID"] = os.getenv("CLIENT_ID")
+if os.getenv("CLIENT_SECRET"):
+    app.config["CLIENT_SECRET"] = os.getenv("CLIENT_SECRET")
+
 db = SQLAlchemy(app)
 mail = MailSendGrid(app)
 socketio = SocketIO(app)

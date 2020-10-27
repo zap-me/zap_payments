@@ -12,7 +12,7 @@ import io
 import re
 import urllib.parse
 
-from flask import url_for, redirect, render_template, request, abort, jsonify, Markup
+from flask import url_for, redirect, render_template, request, abort, jsonify, Markup, flash
 from flask_security.utils import encrypt_password
 from flask_socketio import Namespace, emit, join_room, leave_room
 from flask_security import current_user
@@ -21,6 +21,7 @@ import werkzeug
 import requests
 import qrcode
 import qrcode.image.svg
+from bronze import make_bronze_blueprint, bronze
 
 from app_core import app, db, mail, socketio, aw, timer
 from models import security, user_datastore, Role, User, Invoice, Utility
@@ -31,6 +32,9 @@ logger = logging.getLogger(__name__)
 ws_invoices = {}
 ws_sids = {}
 MAX_DETAIL_CHARS = 12
+
+bronze_blueprint = make_bronze_blueprint('userinfo kyc', redirect_url='/utilities')
+app.register_blueprint(bronze_blueprint, url_prefix='/bronze_login')
 
 #
 # Helper functions
@@ -315,10 +319,22 @@ socketio.on_namespace(SocketIoNamespace("/"))
 # Public endpoints
 #
 
+@app.route("/oauth")
+def oauth():
+    if not bronze.authorized:
+        return render_template("oauth.html")
+    
+    return redirect(url_for('bronze_oauth'))
+
 @app.route("/utilities")
 def utilities():
     utilities = Utility.all_alphabetical(db.session)
-    return render_template("utilities.html", utilities=utilities)
+    url = app.config["BRONZE_ADDRESS"] + '/Manage/Kyc'
+    if not bronze.authorized:
+        flash('Click "ALLOW" to proceed, once login', 'error')
+        return redirect(url_for('oauth'))
+    else:
+        return redirect(url_for('bronze_oauth'))
 
 def validate_amount(amount):
     try:
@@ -400,9 +416,24 @@ def utility():
     STATUS_CREATE = "create"
     STATUS_CHECK = "check"
 
+    if not bronze.authorized:
+        return redirect(url_for('oauth'))
+
+    url = app.config["BRONZE_ADDRESS"] + '/Manage/Kyc'
     utility_id = int(request.args.get("utility"))
     utility = Utility.from_id(db.session, utility_id)
     Utility.jsonify_bank_descriptions([utility])
+    kyc = bronze_blueprint.session.get('AccountKyc')
+    if not kyc.ok:
+        flash('Issue retrieving KYC information', 'error')
+        return redirect(url_for('oauth'))
+    kyc_info = kyc.json()
+    level = kyc_info['level']
+    userinfo = bronze_blueprint.session.get('UserInfo')
+    if not userinfo.ok:
+        flash('Issue retrieving UserInfo information', 'error')
+        return redirect(url_for('oauth'))
+    userinfo_content = userinfo.json()
     if request.method == "POST":
         bank_index = int(request.form.get("zbp_bank_index"))
         bank_desc = utility.bank_description_json[bank_index]
@@ -433,9 +464,9 @@ def utility():
                     return redirect(url_for("invoice", token=invoice.token))
                 else:
                     error = "failed to create invoice ({})".format(err)
-        return render_template("utility.html", utility=utility, selected_bank_name=bank_desc["name"], status=status, email=email, amount=amount, utility_name=utility_name, values=values, error=error)
+        return render_template("utility.html", utility=utility, selected_bank_name=bank_desc["name"], status=status, email=email, amount=amount, utility_name=utility_name, values=values, error=error, kyc_info=kyc_info, userinfo=userinfo_content, url=url)
     else:
-        return render_template("utility.html", utility=utility, status=STATUS_CREATE, values=werkzeug.MultiDict())
+        return render_template("utility.html", utility=utility, status=STATUS_CREATE, values=werkzeug.MultiDict(), kyc_info=kyc_info, userinfo=userinfo_content, url=url)
 
 @app.route("/invoice", methods=["GET", "POST"])
 def invoice():
@@ -471,6 +502,36 @@ def invoice():
         url = "zap" + url[5:]
     #TODO: other statuses..
     return render_template("invoice.html", invoice=invoice, order=order, error=error, qrcode_svg=qrcode_svg, url=url)
+
+@app.route('/bronze_oauth')
+def bronze_oauth():
+    if not bronze.authorized:
+        return redirect(url_for('bronze.login'))
+    validate = bronze_blueprint.session.get('Validate')
+    if not validate.ok:
+        return 'oauth access token not able to validate'
+    userinfo = bronze_blueprint.session.get('UserInfo')
+    if userinfo.ok:
+        userinfo_content = userinfo.json()
+    else:
+        return '<h1>Failed to get userinfo</h1>'
+    kyc = bronze_blueprint.session.get('AccountKyc')
+    if kyc.ok:
+        kyc_info = kyc.json()
+        level = kyc_info['level']
+    else:
+        return '<h1>Failed to get kyc</h1>'
+    url = app.config["BRONZE_ADDRESS"] + '/Manage/Kyc'
+    utilities = Utility.all_alphabetical(db.session)
+    return render_template('utilities.html', utilities=utilities, bronze_auth=bronze.authorized, kyc_info=kyc_info, userinfo=userinfo_content, url=url)
+    
+@app.route("/bronze_logout")
+def logout():
+    if bronze_blueprint.token:
+        del bronze_blueprint.token
+
+    #return redirect(url_for('utilities'))
+    return redirect(url_for('oauth'))
 
 if __name__ == "__main__":
     setup_logging(logging.DEBUG)
