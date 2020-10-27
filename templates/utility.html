@@ -18,9 +18,8 @@
 
     <div class="card">
     {% if kyc_info['level'] < '2' %}
-    <p> level: {{ kyc_info['level'] }} <font color="red"> * KYC NEEDED </font></p>
-
-    Please login to the exchange.
+    <p> level: {{ kyc_info['level'] }} <font color="red"> * KYC NEEDED </font></p></br>
+    <p> Perform KYC Verification to use payments </p>
     {% else %}
         <div class="card-header">
             <h3 class="card-title">{{userinfo.email}}</h3>

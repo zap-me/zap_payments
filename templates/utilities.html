@@ -21,7 +21,8 @@
     </p>
     <p>KYC:</br>
     {% if kyc_info['level'] < '2' %}
-    <p>level: {{ kyc_info['level'] }} <font color="red">    * KYC NEEDED </font></p>
+    <p>level: {{ kyc_info['level'] }} <font color="red">    * KYC NEEDED </font></p></br>
+    <p> Perform KYC Verification to use payments </p>
     {% else %}
         <li>level: {{ kyc_info['level'] }}</li>
 	<li>withdrawal: {{ kyc_info['withdrawalLimit'] }}</li>
