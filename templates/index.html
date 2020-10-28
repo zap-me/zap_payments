@@ -1,7 +1,27 @@
-<html>
-    <body>
-        <div>
-            <a href="{{ url_for('admin.index') }}">Go to admin!</a>
-        </div>
-    </body>
-</html>
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-sm-6">
+    <img class="mb-4" src="https://zap.me/app/themes/zap/assets/public/images/logo-footer.svg" alt="" width="72" height="72">
+    <ul>
+        <li>
+            <a href="/utilities">ZAP Bill Payment</a>
+        </li>
+        <li>
+            <a href="/debit">ZAP Debit Card</a>
+        </li>
+    </ul>
+</div>
+</div>
+{% endblock %}
+
+{% block footer %}
+<div class="row justify-content-center">
+<div class="col-sm-6">
+    <small class="text-muted font-weight-light">
+        <a href="{{ url_for('admin.index') }}" class="text-muted">admin</a>
+    </small>
+</div>
+</div>
+{% endblock %}
