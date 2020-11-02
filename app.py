@@ -33,7 +33,7 @@ ws_invoices = {}
 ws_sids = {}
 MAX_DETAIL_CHARS = 12
 
-bronze_blueprint = make_bronze_blueprint('userinfo kyc', redirect_url='/utilities')
+bronze_blueprint = make_bronze_blueprint('userinfo kyc', redirect_url='/')
 app.register_blueprint(bronze_blueprint, url_prefix='/bronze_login')
 
 #
@@ -195,6 +195,23 @@ def qrcode_svg_create(data):
     svg = output.getvalue().decode('utf-8')
     return svg
 
+def check_bronze_oauth(flash_it=False):
+    if not bronze.authorized:
+        if flash_it:
+            flash('You must log in to Bronze before making a bill payment', 'danger')
+        return False;
+    if not g.bronze_kyc:
+        if flash_it:
+            flash('Unable to check user KYC level', 'danger')
+        return False;
+    return True
+
+def check_bronze_kyc_level():
+    level = int(g.bronze_kyc['level'])
+    if level < 2:
+        return False;
+    return True
+
 @app.before_first_request
 def start_address_watcher():
     aw.transfer_tx_callback = transfer_tx_callback
@@ -231,32 +248,19 @@ def urls_to_links(s):
 
 @app.before_request
 def before_request_func():
-    #g.bronze_kyc_url = app.config["BRONZE_ADDRESS"] + '/Manage/Kyc'
-    #g.kyc = None
-    #g.bronze_userinfo = None
-
-    # make sure its authorised
+    # set bronze vars
+    g.bronze_authorized = bronze.authorized
+    g.bronze_userinfo = None
+    g.bronze_kyc = None
+    g.bronze_kyc_url = app.config["BRONZE_ADDRESS"] + '/Manage/Kyc'
     if bronze.authorized:
-        g.bronze_kyc_url = app.config["BRONZE_ADDRESS"] + '/Manage/Kyc'
-        g.bronze_auth = bronze.authorized
-        #print("i'm authorized")
-        g.kyc = bronze_blueprint.session.get('AccountKyc')
-        if not g.kyc.ok:
-            #print('kyc error')
-            flash('Issue retrieving KYC information', 'error')
-        else:
-            g.kyc_info = g.kyc.json()
-            #print(g.kyc_info)
-
-        g.bronze_userinfo = bronze_blueprint.session.get('UserInfo')
-        if not g.bronze_userinfo.ok:
-            print('userinfo error')
-            flash('Issue retrieving UserInfo information', 'error')
-        else:
-            g.userinfo = g.bronze_userinfo.json()
-    
-    flash('Click \"ALLOW\" when login to proceed.', 'error')
-
+        userinfo = bronze_blueprint.session.get('UserInfo')
+        if userinfo.ok:
+            g.bronze_userinfo = userinfo.json()
+        kyc = bronze_blueprint.session.get('AccountKyc')
+        if kyc.ok:
+            g.bronze_kyc = kyc.json()
+    # debug requests
     if "DEBUG_REQUESTS" in app.config:
         print("URL: %s" % request.url)
         print(request.headers)
@@ -345,21 +349,18 @@ socketio.on_namespace(SocketIoNamespace("/"))
 # Public endpoints
 #
 
-@app.route("/oauth")
-def oauth():
-    if not bronze.authorized:
-        return render_template("oauth.html")
-    
-    return redirect(url_for('bronze_oauth'))
+@app.route("/kyc_incomplete")
+def kyc_incomplete():
+    return render_template('kyc_incomplete.html')
 
 @app.route("/utilities")
 def utilities():
+    if check_bronze_oauth(True):
+        if not check_bronze_kyc_level():
+            return redirect(url_for('kyc_incomplete'))
+
     utilities = Utility.all_alphabetical(db.session)
-    if not bronze.authorized:
-        flash('Click "ALLOW" to proceed, once login', 'error')
-        return redirect(url_for('oauth'))
-    else:
-        return redirect(url_for('bronze_oauth'))
+    return render_template('utilities.html', utilities=utilities)
 
 def validate_amount(amount):
     try:
@@ -441,10 +442,11 @@ def utility():
     STATUS_CREATE = "create"
     STATUS_CHECK = "check"
 
-    if not bronze.authorized:
-        return redirect(url_for('oauth'))
+    if not check_bronze_oauth():
+        return redirect(url_for('index'))
+    if not check_bronze_kyc_level():
+        return redirect(url_for('kyc_incomplete'))
 
-    url = app.config["BRONZE_ADDRESS"] + '/Manage/Kyc'
     utility_id = int(request.args.get("utility"))
     utility = Utility.from_id(db.session, utility_id)
     Utility.jsonify_bank_descriptions([utility])
@@ -521,15 +523,13 @@ def invoice():
 def bronze_oauth():
     if not bronze.authorized:
         return redirect(url_for('bronze.login'))
-    utilities = Utility.all_alphabetical(db.session)
-    return render_template('utilities.html', utilities=utilities)
+    return redirect(url_for('index'))
 
 @app.route("/bronze_logout")
-def logout():
+def bronze_logout():
     if bronze_blueprint.token:
         del bronze_blueprint.token
-
-    return redirect(url_for('oauth'))
+    return redirect(url_for('index'))
 
 if __name__ == "__main__":
     setup_logging(logging.DEBUG)

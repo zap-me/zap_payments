@@ -4,23 +4,16 @@
 <div class="row justify-content-center">
 <div class="col-sm-6">
 <form action="/utility">
-    {% if g.kyc_info['level'] < '2' %}
-    <div class="card-body">
-	<p>KYC LEVEL: {{ g.kyc_info['level'] }} <font color="red">Bronze user details not verified</font></p></br>
-	<button class="btn btn-lg btn-primary btn-block" type="button" onclick="window.location.href='{{ g.bronze_kyc_url }}'"/>Goto Bronze Exchange</button></br>
+    <h1 class="h3 mb-3 font-weight-normal">Please choose a utility</h1>
+    <div class="form-group">
+        <label for="utility">Utilities:</label>
+        <select name="utility" id="utility" class="form-control">
+            {% for utility in utilities %}
+            <option value="{{utility.id}}">{{utility.name}}</option>
+            {% endfor %}
+        </select>
     </div>
-    {% else %}
-	<div class="form-group">
-	<h1 class="h3 mb-3 font-weight-normal">Please choose a utility</h1>
-	    <label for="utility">Utilities:</label>
-	    <select name="utility" id="utility" class="form-control">
-	        {% for utility in utilities %}
-	        <option value="{{utility.id}}">{{utility.name}}</option>
-	        {% endfor %}
-	    </select>
-	</div>
-	<button class="btn btn-lg btn-primary btn-block" type="submit">Submit</button></br>
-    {% endif %}
+    <button class="btn btn-lg btn-primary btn-block" type="submit">Submit</button>
 </form>
 </div>
 </div>
