@@ -19,6 +19,8 @@ from flask_security import Security, SQLAlchemyUserDatastore, \
 from marshmallow import Schema, fields
 from markupsafe import Markup
 import jsbeautifier
+#from flask_sqlalchemy import SQLAlchemy
+#from flask_dance.consumer.storage.sqla import OAuthConsumerMixin, SQLAlchemyStorage
 
 from app_core import app, db
 from utils import generate_key
@@ -57,6 +59,18 @@ class User(db.Model, UserMixin):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
+    @classmethod
+    def from_email(cls, session, email):
+        return session.query(cls).filter(cls.email == email).first()
+
+    def __str__(self):
+        return '%s' % self.email
+
+class BronzeUser(db.Model):
+    __tablename__ = 'bronze_user'
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True)
 
     @classmethod
     def from_email(cls, session, email):

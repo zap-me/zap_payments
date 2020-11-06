@@ -2,7 +2,7 @@
 SECRET_KEY = '123456790'
 
 # Create in-memory database
-DATABASE_FILE = 'zap-bill-paument-test.db'
+DATABASE_FILE = 'zap-bill-payment-test.db'
 SQLALCHEMY_DATABASE_URI = 'sqlite:///' + DATABASE_FILE
 SQLALCHEMY_ECHO = True
 

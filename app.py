@@ -24,7 +24,7 @@ import qrcode.image.svg
 from bronze import make_bronze_blueprint, bronze
 
 from app_core import app, db, mail, socketio, aw, timer
-from models import security, user_datastore, Role, User, Invoice, Utility
+from models import security, user_datastore, Role, User, Invoice, Utility, BronzeUser
 import admin
 from utils import check_hmac_auth, generate_key, is_email
 
@@ -81,6 +81,17 @@ def add_role(email, role_name):
             user.roles.append(role)
         else:
             logger.info("user already has role")
+        db.session.commit()
+
+def add_bronzeuser(email):
+    with app.app_context():
+        bronzeuser = BronzeUser.from_email(db.session, email)
+        if not bronzeuser:
+            logger.info("adding bronzeuser: "+ email)
+            bronzeuser = BronzeUser(email=email)
+            db.session.add(bronzeuser)
+        else:
+            logger.info("bronzeuser " + email + " already exists")
         db.session.commit()
 
 def check_auth(token, nonce, sig, body):
@@ -356,6 +367,7 @@ def kyc_incomplete():
 @app.route("/utilities")
 def utilities():
     if check_bronze_oauth(True):
+        add_bronzeuser(g.bronze_userinfo['email'])
         if not check_bronze_kyc_level():
             return redirect(url_for('kyc_incomplete'))
 
