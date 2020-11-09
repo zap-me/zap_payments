@@ -19,8 +19,6 @@ from flask_security import Security, SQLAlchemyUserDatastore, \
 from marshmallow import Schema, fields
 from markupsafe import Markup
 import jsbeautifier
-#from flask_sqlalchemy import SQLAlchemy
-#from flask_dance.consumer.storage.sqla import OAuthConsumerMixin, SQLAlchemyStorage
 
 from app_core import app, db
 from utils import generate_key
@@ -56,6 +54,7 @@ class User(db.Model, UserMixin):
     confirmed_at = db.Column(db.DateTime())
     roles = db.relationship('Role', secondary=roles_users,
                             backref=db.backref('users', lazy='dynamic'))
+    bronzedata = db.relationship('BronzeData', backref=db.backref('bronzedata_user'), uselist=False) # one-to-one relationship with BronzeData
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -67,17 +66,11 @@ class User(db.Model, UserMixin):
     def __str__(self):
         return '%s' % self.email
 
-class BronzeUser(db.Model):
-    __tablename__ = 'bronze_user'
+class BronzeData(db.Model):
+    __tablename__ = 'bronze_data'
     id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(255), unique=True)
-
-    @classmethod
-    def from_email(cls, session, email):
-        return session.query(cls).filter(cls.email == email).first()
-
-    def __str__(self):
-        return '%s' % self.email
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
+    kyc_validated = db.Column(db.Boolean())
 
 class InvoiceSchema(Schema):
     date = fields.Float()
@@ -291,6 +284,13 @@ class RestrictedModelView(BaseModelView):
 class UserModelView(RestrictedModelView):
     column_list = ['email', 'roles']
     column_editable_list = ['roles']
+
+class AdminUserModelView(UserModelView):
+    can_create = True
+    can_delete = True
+    ca_edit = True
+    def is_accessible(self):
+        return (current_user.has_role('admin'))
 
 class InvoiceModelView(RestrictedModelView):
     column_formatters = dict(amount=_format_amount, amount_zap=_format_amount)

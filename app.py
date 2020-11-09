@@ -24,7 +24,7 @@ import qrcode.image.svg
 from bronze import make_bronze_blueprint, bronze
 
 from app_core import app, db, mail, socketio, aw, timer
-from models import security, user_datastore, Role, User, Invoice, Utility, BronzeUser
+from models import security, user_datastore, Role, User, Invoice, Utility, BronzeData
 import admin
 from utils import check_hmac_auth, generate_key, is_email
 
@@ -83,16 +83,47 @@ def add_role(email, role_name):
             logger.info("user already has role")
         db.session.commit()
 
-def add_bronzeuser(email):
-    with app.app_context():
-        bronzeuser = BronzeUser.from_email(db.session, email)
-        if not bronzeuser:
-            logger.info("adding bronzeuser: "+ email)
-            bronzeuser = BronzeUser(email=email)
-            db.session.add(bronzeuser)
-        else:
-            logger.info("bronzeuser " + email + " already exists")
+### grab bronze user from user table
+def get_bronzeuser(email):
+    bronzeuser_result = user_datastore.get_user(email)
+    if bronzeuser_result:
+        return True
+    else:
+        return False
+
+### create users with 'bronze' role
+def create_bronzeuser(email):
+    if not get_bronzeuser(email):
+        logger.info('BronzeUser does NOT exists in the user table.')
+        logger.info('Adding email address: '+email+' to the DB')
+        user = user_datastore.create_user(email=email)
         db.session.commit()
+        logger.info('Activating email address: '+email)
+        user_datastore.activate_user(user)
+    else:
+        logger.info('BronzeUser exists in the user table.')
+
+### create a way to link user table to bronze_data
+def update_bronzedata(email):
+    logger.info('running update_bronzedata function')
+    ### get user from user table
+    check_bronzeuser = user_datastore.get_user(email)
+    bronzedata_user = BronzeData.query.filter_by(user_id=check_bronzeuser.id).first()
+    ### set the kyc_validated_result
+    if check_bronze_kyc_level():
+        kyc_validated_result = True
+    else:
+        kyc_validated_result = False
+    ### insert row by checking bronzedata_user if not exists
+    if not bronzedata_user:
+        logger.info('adding data to bronze_data table')
+        bronzedata_data = BronzeData(user_id=check_bronzeuser.id, kyc_validated=kyc_validated_result)
+        db.session.add(bronzedata_data)
+    else:
+    ### update if bronzedata_user exists
+        logger.info('updating data to bronze_data table')
+        bronzedata_data = BronzeData.query.filter_by(user_id=check_bronzeuser.id).update(dict(kyc_validated=kyc_validated_result))
+    db.session.commit()
 
 def check_auth(token, nonce, sig, body):
     invoice = Invoice.from_token(db.session, token)
@@ -206,11 +237,18 @@ def qrcode_svg_create(data):
     svg = output.getvalue().decode('utf-8')
     return svg
 
-def check_bronze_oauth(flash_it=False):
+def check_bronze_auth(flash_it=False):
     if not bronze.authorized:
         if flash_it:
             flash('You must log in to Bronze before making a bill payment', 'danger')
         return False;
+    logger.info('Checking DB for email address: '+g.bronze_userinfo['email'])
+    bronzeuser = get_bronzeuser(g.bronze_userinfo['email'])
+    email = g.bronze_userinfo['email']
+    #if not bronzeuser:
+    create_bronzeuser(email)
+    add_role(email, 'bronze')
+    update_bronzedata(email)
     if not g.bronze_kyc:
         if flash_it:
             flash('Unable to check user KYC level', 'danger')
@@ -366,8 +404,7 @@ def kyc_incomplete():
 
 @app.route("/utilities")
 def utilities():
-    if check_bronze_oauth(True):
-        add_bronzeuser(g.bronze_userinfo['email'])
+    if check_bronze_auth(True):
         if not check_bronze_kyc_level():
             return redirect(url_for('kyc_incomplete'))
 
@@ -454,7 +491,7 @@ def utility():
     STATUS_CREATE = "create"
     STATUS_CHECK = "check"
 
-    if not check_bronze_oauth():
+    if not check_bronze_auth():
         return redirect(url_for('index'))
     if not check_bronze_kyc_level():
         return redirect(url_for('kyc_incomplete'))
@@ -549,6 +586,7 @@ if __name__ == "__main__":
     # create tables
     db.create_all()
     create_role("admin", "super user")
+    create_role("bronze", "bronze user")
     db.session.commit()
 
     # process commands
