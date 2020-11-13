@@ -290,13 +290,6 @@ class UserModelView(RestrictedModelView):
     column_list = ['email', 'roles']
     column_editable_list = ['roles']
 
-class AdminUserModelView(UserModelView):
-    can_create = True
-    can_delete = True
-    ca_edit = True
-    def is_accessible(self):
-        return (current_user.has_role('admin'))
-
 class InvoiceModelView(RestrictedModelView):
     column_formatters = dict(amount=_format_amount, amount_zap=_format_amount)
     column_labels = dict(amount='NZD Amount', amount_zap='ZAP Amount')
