@@ -54,6 +54,7 @@ class User(db.Model, UserMixin):
     confirmed_at = db.Column(db.DateTime())
     roles = db.relationship('Role', secondary=roles_users,
                             backref=db.backref('users', lazy='dynamic'))
+    bronze_data = db.relationship('BronzeData', cascade='delete', backref=db.backref('user'), uselist=False)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -64,6 +65,16 @@ class User(db.Model, UserMixin):
 
     def __str__(self):
         return '%s' % self.email
+
+class BronzeData(db.Model):
+    __tablename__ = 'bronze_data'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
+    kyc_validated = db.Column(db.Boolean())
+
+    def __init__(self, user, kyc_validated):
+        self.user_id = user.id
+        self.kyc_validated = kyc_validated
 
 class InvoiceSchema(Schema):
     date = fields.Float()
@@ -275,6 +286,7 @@ class RestrictedModelView(BaseModelView):
                 current_user.has_role('admin'))
 
 class UserModelView(RestrictedModelView):
+    can_delete = True
     column_list = ['email', 'roles']
     column_editable_list = ['roles']
 

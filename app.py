@@ -15,7 +15,8 @@ import urllib.parse
 from flask import url_for, redirect, render_template, request, abort, jsonify, Markup, flash, g
 from flask_security.utils import encrypt_password
 from flask_socketio import Namespace, emit, join_room, leave_room
-from flask_security import current_user
+from flask_security import current_user, login_user, logout_user
+from flask_security.core import AnonymousUser
 from flask_mail import Message
 import werkzeug
 import requests
@@ -24,7 +25,7 @@ import qrcode.image.svg
 from bronze import make_bronze_blueprint, bronze
 
 from app_core import app, db, mail, socketio, aw, timer
-from models import security, user_datastore, Role, User, Invoice, Utility
+from models import security, user_datastore, Role, User, Invoice, Utility, BronzeData
 import admin
 from utils import check_hmac_auth, generate_key, is_email
 
@@ -33,7 +34,7 @@ ws_invoices = {}
 ws_sids = {}
 MAX_DETAIL_CHARS = 12
 
-bronze_blueprint = make_bronze_blueprint('userinfo kyc', redirect_url='/')
+bronze_blueprint = make_bronze_blueprint('userinfo kyc', redirect_url='/bronze_oauth_complete')
 app.register_blueprint(bronze_blueprint, url_prefix='/bronze_login')
 
 #
@@ -107,12 +108,12 @@ def bronze_request(endpoint, params):
     # create request
     headers = {"Content-Type": "application/json", "X-Signature": signature}
     url = app.config["BRONZE_ADDRESS"] + "/api/v1/" + endpoint
-    #print(":: requesting %s.." % url)
+    #logger.info(":: requesting %s.." % url)
     r = requests.post(url, headers=headers, data=body)
     try:
         r.raise_for_status()
     except:
-        print("ERROR: response http status %d (%s)" % (r.status_code, r.content))
+        logger.error("ERROR: response http status %d (%s)" % (r.status_code, r.content))
         return None, r.content.decode("utf-8")
     return r, None
 
@@ -136,7 +137,7 @@ def bronze_order_accept(invoice):
 
 def transfer_tx_callback(tokens, tx):
     txt = json.dumps(tx)
-    print("transfer_tx_callback: tx %s" % txt)
+    logger.info("transfer_tx_callback: tx %s" % txt)
     for token in tokens:
         invoice = Invoice.from_token(db.session, token)
         if invoice:
@@ -147,19 +148,19 @@ def transfer_tx_callback(tokens, tx):
                     invoice_id = attachment["InvoiceId"]
                     amount_zap = int(tx["amount"] * 100)
                     if invoice_id == order["invoiceId"] and amount_zap >= invoice.amount_zap:
-                        print("marking invoice (%s) as seen" % token)
+                        logger.info("marking invoice (%s) as seen" % token)
                         invoice.tx_seen = True
                         db.session.add(invoice)
                         db.session.commit()
                 except:
                     pass
-        print("sending 'tx' event to room %s" % token)
+        logger.info("sending 'tx' event to room %s" % token)
         socketio.emit("tx", txt, json=True, room=token)
 
 def ws_invoices_timer_callback():
-    #print("ws_invoices_timer_callback()..")
+    #logger.info("ws_invoices_timer_callback()..")
     for token in ws_invoices.keys():
-        #print("ws_invoices_timer_callback: token: {}".format(token))
+        #logger.info("ws_invoices_timer_callback: token: {}".format(token))
         invoice = Invoice.from_token(db.session, token)
         if invoice:
             order = bronze_order_status(invoice)
@@ -167,7 +168,7 @@ def ws_invoices_timer_callback():
                 socketio.emit("order_status", order["status"], room=token)
 
 def email_invoices_timer_callback():
-    print("email_invoices_timer_callback()..")
+    logger.info("email_invoices_timer_callback()..")
     with app.app_context():
         invoices = Invoice.all_with_email_and_not_terminated(db.session)
         for invoice in invoices:
@@ -195,22 +196,61 @@ def qrcode_svg_create(data):
     svg = output.getvalue().decode('utf-8')
     return svg
 
-def check_bronze_oauth(flash_it=False):
-    if not bronze.authorized:
-        if flash_it:
-            flash('You must log in to Bronze before making a bill payment', 'danger')
-        return False;
-    if not g.bronze_kyc:
-        if flash_it:
-            flash('Unable to check user KYC level', 'danger')
-        return False;
+def add_update_bronze_data(user):
+    kyc = bronze_blueprint.session.get('AccountKyc')
+    if kyc.ok:
+        kyc = kyc.json()
+        level = int(kyc['level'])
+        validated = level >= 2
+        if user.bronze_data:
+            user.bronze_data.kyc_validated = validated
+        else:
+            user.bronze_data = BronzeData(user, validated)
+        db.session.add(user.bronze_data)
+        db.session.commit()
+        return True
+    return False
+
+def check_bronze_auth(flash_it=False):
+    logger.info('current_user: {0}'.format(current_user))
+    if not hasattr(current_user, 'bronze_data') or not current_user.bronze_data:
+        if bronze.authorized:
+            userinfo = bronze_blueprint.session.get('UserInfo')
+            if userinfo.ok:
+                userinfo = userinfo.json()
+                email = userinfo['email']
+                user = user_datastore.get_user(email)
+                if not user:
+                    logger.info('user does not exist with email "{0}"'.format(email))
+                    user = user_datastore.create_user(email=email)
+                    user_datastore.add_role_to_user(user, 'bronze')
+                    user_datastore.activate_user(user)
+                    login_user(user, remember=True)
+                if not add_update_bronze_data(user):
+                    if flash_it:
+                        flash('Unable to update user KYC data', 'danger')
+                    return False
+                db.session.commit()
+            else:
+                if flash_it:
+                    flash('Unable to update user email', 'danger')
+                return False
+        else:
+            if flash_it:
+                flash('Not logged in to Bronze', 'danger')
+            return False
+    else:
+        if not add_update_bronze_data(current_user):
+            if flash_it:
+                flash('Unable to update user KYC data', 'danger')
+            return False
+
     return True
 
 def check_bronze_kyc_level():
-    level = int(g.bronze_kyc['level'])
-    if level < 2:
+    if not hasattr(current_user, 'bronze_data') or not current_user.bronze_data:
         return False;
-    return True
+    return current_user.bronze_data.kyc_validated
 
 @app.before_first_request
 def start_address_watcher():
@@ -250,20 +290,11 @@ def urls_to_links(s):
 def before_request_func():
     # set bronze vars
     g.bronze_authorized = bronze.authorized
-    g.bronze_userinfo = None
-    g.bronze_kyc = None
     g.bronze_kyc_url = app.config["BRONZE_ADDRESS"] + '/Manage/Kyc'
-    if bronze.authorized:
-        userinfo = bronze_blueprint.session.get('UserInfo')
-        if userinfo.ok:
-            g.bronze_userinfo = userinfo.json()
-        kyc = bronze_blueprint.session.get('AccountKyc')
-        if kyc.ok:
-            g.bronze_kyc = kyc.json()
     # debug requests
     if "DEBUG_REQUESTS" in app.config:
-        print("URL: %s" % request.url)
-        print(request.headers)
+        logger.info("URL: %s" % request.url)
+        logger.info(request.headers)
 
 @app.route("/")
 def index():
@@ -279,7 +310,7 @@ def test_invoice(token):
         return abort(404)
     invoice = Invoice.from_token(db.session, token)
     if token in ws_invoices:
-        print("sending invoice update %s" % token)
+        logger.info("sending invoice update %s" % token)
         socketio.emit("info", invoice.to_json(), json=True, room=token)
     if invoice:
         return jsonify(invoice.to_json())
@@ -310,10 +341,10 @@ class SocketIoNamespace(Namespace):
         return super(SocketIoNamespace, self).trigger_event(event, sid, *args)
 
     def on_error(self, e):
-        print(e)
+        logger.error(e)
 
     def on_connect(self):
-        print("connect sid: %s" % request.sid)
+        logger.info("connect sid: %s" % request.sid)
 
     def on_auth(self, auth):
         # check auth
@@ -321,24 +352,24 @@ class SocketIoNamespace(Namespace):
         if res:
             emit("info", "authenticated!")
             # join room and store user
-            print("join room for invoice: %s" % auth["token"])
+            logger.info("join room for invoice: %s" % auth["token"])
             join_room(auth["token"])
             ws_invoices[auth["token"]] = request.sid
             ws_sids[request.sid] = auth["token"]
 
     def on_invoice(self, token):
-        print("join room for invoice: %s" % token)
+        logger.info("join room for invoice: %s" % token)
         join_room(token)
         ws_invoices[token] = request.sid
         ws_sids[request.sid] = token
         emit("info", "joined room for invoice: %s" % token)
 
     def on_disconnect(self):
-        print("disconnect sid: %s" % request.sid)
+        logger.info("disconnect sid: %s" % request.sid)
         if request.sid in ws_sids:
             token = ws_sids[request.sid]
             if token in ws_invoices:
-                print("leave room for invoice: %s" % token)
+                logger.info("leave room for invoice: %s" % token)
                 leave_room(token)
                 del ws_invoices[token]
             del ws_sids[request.sid]
@@ -355,7 +386,7 @@ def kyc_incomplete():
 
 @app.route("/utilities")
 def utilities():
-    if check_bronze_oauth(True):
+    if check_bronze_auth(True):
         if not check_bronze_kyc_level():
             return redirect(url_for('kyc_incomplete'))
 
@@ -442,7 +473,7 @@ def utility():
     STATUS_CREATE = "create"
     STATUS_CHECK = "check"
 
-    if not check_bronze_oauth():
+    if not check_bronze_auth():
         return redirect(url_for('index'))
     if not check_bronze_kyc_level():
         return redirect(url_for('kyc_incomplete'))
@@ -506,7 +537,7 @@ def invoice():
                 order = res
     if order["status"] == Invoice.STATUS_READY:
         # watch address
-        print("watching address %s for %s" % (order["paymentAddress"], token))
+        logger.info("watching address %s for %s" % (order["paymentAddress"], token))
         aw.watch(order["paymentAddress"], token)
         # prepare template
         invoice_id = order["invoiceId"]
@@ -525,18 +556,27 @@ def bronze_oauth():
         return redirect(url_for('bronze.login'))
     return redirect(url_for('index'))
 
-@app.route("/bronze_logout")
-def bronze_logout():
+@app.route('/bronze_oauth_complete')
+def bronze_oauth_complete():
+    if bronze.authorized:
+        check_bronze_auth(True)
+    return redirect(url_for('index'))
+
+@app.route("/logout")
+def logout():
     if bronze_blueprint.token:
         del bronze_blueprint.token
+    logout_user()
     return redirect(url_for('index'))
 
 if __name__ == "__main__":
+    logger.info("app.py start..")
     setup_logging(logging.DEBUG)
 
     # create tables
     db.create_all()
     create_role("admin", "super user")
+    create_role("bronze", "bronze user")
     db.session.commit()
 
     # process commands
@@ -559,7 +599,7 @@ if __name__ == "__main__":
 
         # Bind to PORT if defined, otherwise default to 5000.
         port = int(os.environ.get("PORT", 5000))
-        print("binding to port: %d" % port)
+        logger.info("binding to port: %d" % port)
         socketio.run(app, host="0.0.0.0", port=port)
         # stop addresswatcher
         if aw:

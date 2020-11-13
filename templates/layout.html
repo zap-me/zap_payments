@@ -22,13 +22,13 @@
           -->
         </ul>
       </div>
-      {% if g.bronze_authorized %}
-          {% if g.bronze_userinfo %}
+      {% if current_user.is_authenticated %}
       <span class="navbar-text"> 
-          {{ g.bronze_userinfo.email }}&nbsp
+          {{ current_user.email }}&nbsp
       </span>
-          {% endif %}
-      <button class="btn btn-primary" type="button" onclick="window.location.href='/bronze_logout'"/>Bronze Logout</button>
+      {% endif %}
+      {% if current_user.is_authenticated and current_user.bronze_data or g.bronze_authorized %}
+      <button class="btn btn-primary" type="button" onclick="window.location.href='/logout'"/>Logout</button>
       {% else %}
       <button class="btn btn-primary" type="button" onclick="window.location.href='/bronze_oauth'"/>Bronze Login</button>
       {% endif %}
