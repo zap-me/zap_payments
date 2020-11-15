@@ -225,11 +225,11 @@ def check_bronze_auth(flash_it=False):
                     user = user_datastore.create_user(email=email)
                     user_datastore.add_role_to_user(user, 'bronze')
                     user_datastore.activate_user(user)
-                    login_user(user, remember=True)
                 if not add_update_bronze_data(user):
                     if flash_it:
                         flash('Unable to update user KYC data', 'danger')
                     return False
+                login_user(user, remember=True)
                 db.session.commit()
             else:
                 if flash_it:
@@ -473,8 +473,8 @@ def utility():
     STATUS_CREATE = "create"
     STATUS_CHECK = "check"
 
-    if not check_bronze_auth():
-        return redirect(url_for('index'))
+    if not check_bronze_auth(True):
+        return redirect(url_for('utilities'))
     if not check_bronze_kyc_level():
         return redirect(url_for('kyc_incomplete'))
 
