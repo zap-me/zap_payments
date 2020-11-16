@@ -34,7 +34,7 @@ ws_invoices = {}
 ws_sids = {}
 MAX_DETAIL_CHARS = 12
 
-bronze_blueprint = make_bronze_blueprint('userinfo kyc', redirect_url='/bronze_oauth_complete')
+bronze_blueprint = make_bronze_blueprint('userinfo kyc', app.config["CLIENT_ID"], app.config["CLIENT_SECRET"], app.config["BRONZE_ADDRESS"], redirect_url='/bronze_oauth_complete')
 app.register_blueprint(bronze_blueprint, url_prefix='/bronze_login')
 
 #
@@ -131,6 +131,55 @@ def bronze_order_accept(invoice):
     params = dict(token=invoice.bronze_broker_token)
     # create request
     r, err = bronze_request("BrokerAccept", params)
+    if not r:
+        return None
+    return r.json()
+
+def oxygen_request(endpoint, params):
+    client_id = app.config["OXYGEN_GLOBAL_CLIENT_ID"]
+    client_secret = app.config["OXYGEN_GLOBAL_CLIENT_SECRET"]
+    # create request
+    headers = {"Content-Type": "application/json", "clientId": client_id, "clientSecret": client_secret}
+    url = app.config["OXYGEN_GLOBAL_URL"] + endpoint
+    logger.info(":: requesting %s.." % url)
+    if params:
+        body = json.dumps(params)
+        logger.info(":: post body %s" % params)
+        r = requests.post(url, headers=headers, data=body)
+    else:
+        r = requests.get(url, headers=headers)
+    try:
+        r.raise_for_status()
+    except:
+        logger.error("ERROR: response http status %d (%s)" % (r.status_code, r.content))
+        return None, r.content.decode("utf-8")
+    return r, None
+
+def oxygen_echo():
+    # create request body
+    params = None
+    # create request
+    r, err = oxygen_request("/services/api/public/card/echo", params)
+    if not r:
+        return None
+    return r.json()
+
+def oxygen_card_sale(account_id, teller_id, vendor_branch_id, vendor_group_name):
+    # create request body
+    customer_details = dict(address1="1 Cheese Street", address2="", city="Auckland", postalCode="2022", state="N/A", country="NZ", dateOfBirth="11/11/1911", email="test@gmail.com", firstName="BOB", lastName="JONES", language="EN", mobile="021212121")
+    kyc_document = dict(countryOfIssuance="NZ", documentNumber="1234567890", stateOrProvince="NZ")
+    params = dict(accountIdentifier=account_id, tellerId=teller_id, vendorBranchId=vendor_branch_id, vendorGroupName=vendor_group_name, customerDetails=customer_details, kycDocument=kyc_document)
+    # create request
+    r, err = oxygen_request("/services/api/public/card/cardSale", params)
+    if not r:
+        return None
+    return r.json()
+
+def oxygen_load_funds(account_id, teller_id, vendor_branch_id, vendor_group_name, amount, description):
+    # create request body
+    params = dict(accountIdentifier=account_id, tellerId=teller_id, vendorBranchId=vendor_branch_id, vendorGroupName=vendor_group_name, totalAmount=amount, description=description)
+    # create request
+    r, err = oxygen_request("/services/api/public/card/loadFunds", params)
     if not r:
         return None
     return r.json()
@@ -551,6 +600,43 @@ def invoice():
         url = "zap" + url[5:]
     #TODO: other statuses..
     return render_template("invoice.html", invoice=invoice, order=order, error=error, qrcode_svg=qrcode_svg, url=url)
+
+@app.route('/card')
+def card():
+    return render_template("card.html")
+
+@app.route('/oxy_echo')
+def oxy_echo():
+    res = oxygen_echo()
+    if res:
+        flash(res, 'success')
+    else:
+        flash('fail', 'danger')
+    return redirect(url_for('card'))
+
+ACCOUNT_ID = '123456789012'
+TELLER_ID = 'Demo User'
+VENDOR_BRANCH_ID = '1234'
+VENDOR_GROUP_NAME = 'Demo Vendor'
+
+
+@app.route('/oxy_card_sale')
+def oxy_card_sale():
+    res = oxygen_card_sale(ACCOUNT_ID, TELLER_ID, VENDOR_BRANCH_ID, VENDOR_GROUP_NAME)
+    if res:
+        flash(res, 'success')
+    else:
+        flash('fail', 'danger')
+    return redirect(url_for('card'))
+
+@app.route('/oxy_card_load_funds')
+def oxy_card_load_funds():
+    res = oxygen_load_funds(ACCOUNT_ID, TELLER_ID, VENDOR_BRANCH_ID, VENDOR_GROUP_NAME, 10.5, 'Demo Autopay')
+    if res:
+        flash(res, 'success')
+    else:
+        flash('fail', 'danger')
+    return redirect(url_for('card'))
 
 @app.route('/bronze_oauth')
 def bronze_oauth():

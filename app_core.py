@@ -50,8 +50,22 @@ if os.getenv("INVOICE_WS_SECONDS"):
     app.config["INVOICE_WS_SECONDS"] = int(os.getenv("INVOICE_WS_SECONDS"))
 if os.getenv("CLIENT_ID"):
     app.config["CLIENT_ID"] = os.getenv("CLIENT_ID")
+else:
+    app.config["CLIENT_ID"] = ""
 if os.getenv("CLIENT_SECRET"):
     app.config["CLIENT_SECRET"] = os.getenv("CLIENT_SECRET")
+else:
+    app.config["CLIENT_SECRET"] = ""
+if os.getenv("OXYGEN_GLOBAL_URL"):
+    app.config["OXYGEN_GLOBAL_URL"] = os.getenv("OXYGEN_GLOBAL_URL")
+    app.config["OXYGEN_GLOBAL_CLIENT_ID"] = os.getenv("OXYGEN_GLOBAL_CLIENT_ID")
+    app.config["OXYGEN_GLOBAL_CLIENT_SECRET"] = os.getenv("OXYGEN_GLOBAL_CLIENT_SECRET")
+    app.config["CARD_ENABLED"] = True
+else:
+    app.config["OXYGEN_GLOBAL_URL"] = ""
+    app.config["OXYGEN_GLOBAL_CLIENT_ID"] = ""
+    app.config["OXYGEN_GLOBAL_CLIENT_SECRET"] = ""
+    app.config["CARD_ENABLED"] = False
 
 db = SQLAlchemy(app)
 mail = MailSendGrid(app)
