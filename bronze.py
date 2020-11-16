@@ -1,7 +1,6 @@
 from flask_dance.consumer import OAuth2ConsumerBlueprint
 from functools import partial
 from flask.globals import LocalProxy, _lookup_app_object
-from app_core import app
 
 try:
     from flask import _app_ctx_stack as stack
@@ -10,6 +9,9 @@ except ImportError:
 
 def make_bronze_blueprint(
     scope,
+    client_id,
+    client_secret,
+    bronze_address,
     redirect_url=None,
     redirect_to=None,
     login_url=None,
@@ -20,12 +22,12 @@ def make_bronze_blueprint(
     bronze_bp = OAuth2ConsumerBlueprint(
         "bronze",
         __name__,
-        client_id=app.config["CLIENT_ID"],
-        client_secret=app.config["CLIENT_SECRET"],
+        client_id=client_id,
+        client_secret=client_secret,
         scope=scope,
-        base_url=app.config["BRONZE_ADDRESS"]+"/oauth/v1/",
-        authorization_url=app.config["BRONZE_ADDRESS"]+"/oauth/v1/Auth",
-        token_url=app.config["BRONZE_ADDRESS"]+"/oauth/v1/Token",
+        base_url=bronze_address+"/oauth/v1/",
+        authorization_url=bronze_address+"/oauth/v1/Auth",
+        token_url=bronze_address+"/oauth/v1/Token",
         token_url_params={"include_client_id": True},
         redirect_url=redirect_url,
         redirect_to=redirect_to,
