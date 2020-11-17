@@ -15,7 +15,7 @@ import urllib.parse
 from flask import url_for, redirect, render_template, request, abort, jsonify, Markup, flash, g
 from flask_security.utils import encrypt_password
 from flask_socketio import Namespace, emit, join_room, leave_room
-from flask_security import current_user, login_user, logout_user
+from flask_security import current_user, login_user, logout_user, roles_accepted
 from flask_security.core import AnonymousUser
 from flask_mail import Message
 import werkzeug
@@ -250,6 +250,9 @@ def check_bronze_auth(flash_it=False):
 def check_bronze_kyc_level():
     if not hasattr(current_user, 'bronze_data') or not current_user.bronze_data:
         return False;
+    # if not kyc validated check again with bronze to see if updated
+    if not current_user.bronze_data.kyc_validated:
+        add_update_bronze_data(current_user)
     return current_user.bronze_data.kyc_validated
 
 @app.before_first_request
@@ -385,10 +388,10 @@ def kyc_incomplete():
     return render_template('kyc_incomplete.html')
 
 @app.route("/utilities")
+@roles_accepted("bronze")
 def utilities():
-    if check_bronze_auth(True):
-        if not check_bronze_kyc_level():
-            return redirect(url_for('kyc_incomplete'))
+    if not check_bronze_kyc_level():
+        return redirect(url_for('kyc_incomplete'))
 
     utilities = Utility.all_alphabetical(db.session)
     return render_template('utilities.html', utilities=utilities)
@@ -469,12 +472,11 @@ def invoice_create(utility, details, email, amount, utility_name):
     return invoice, None
 
 @app.route("/utility", methods=["GET", "POST"])
+@roles_accepted("bronze")
 def utility():
     STATUS_CREATE = "create"
     STATUS_CHECK = "check"
 
-    if not check_bronze_auth(True):
-        return redirect(url_for('utilities'))
     if not check_bronze_kyc_level():
         return redirect(url_for('kyc_incomplete'))
 
