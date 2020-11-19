@@ -1,18 +1,22 @@
 {% extends "layout.html" %}
 
 {% block content %}
-<div class="row justify-content-center">
-<div class="col-sm-6">
-    <ul>
-        <li>
-            <a href="/utilities">ZAP Bill Payment</a>
-        </li>
-        <li>
-            <a href="/debit">ZAP Debit Card</a>
-        </li>
-    </ul>
-</div>
-</div>
+{% if current_user.is_authenticated %}
+    <div class="row justify-content-center">
+    <div class="col-sm-6">
+        <ul>
+	    {% if current_user.has_role("bronze") %}
+            <li>
+                <a href="/utilities">ZAP Bill Payment</a>
+            </li>
+            <li>
+                <a href="/debit">ZAP Debit Card</a>
+            </li>
+	    {% endif %}
+        </ul>
+    </div>
+    </div>
+{% endif %}
 {% endblock %}
 
 {% block footer %}
