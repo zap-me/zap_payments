@@ -135,6 +135,44 @@ def bronze_order_accept(invoice):
         return None
     return r.json()
 
+def customer_oxygen_request(service_endpoint, token, params):
+    headers = {"Content-Type": "application/json", "Authorization": "Token "+token}
+    url = 'https://oxygentestenv01.oxygen-global.com' + service_endpoint
+    logger.info(":: customer requesting %s.." % url)
+    if params:
+        body = params
+        logger.info(":: post body %s" % params)
+        r = requests.post(url, headers=headers, data=body)
+    else:
+        r = requests.get(url, headers=headers)
+    try:
+        r.raise_for_status()
+    except:
+        logger.error("ERROR: response http status %d (%s)" % (r.status_code, r.content))
+        return None, r.content.decode("utf-8")
+    return r.json()
+
+def cardservices_getpubkey(token, applicationId):
+    params_getpubkey = None
+    endpoint = '/cardservices/api/public/application/getkey/'
+    service_endpoint = endpoint+applicationId
+    req_getpubkey = customer_oxygen_request(service_endpoint, token, params_getpubkey)
+    return req_getpubkey
+
+def carddetails_detailsbyuserid(token, userName, applicationId):
+    params = None
+    endpoint = '/cardservices/api/rest/card/detailsByUserId/'
+    service_endpoint = endpoint+userName
+    req = customer_oxygen_request(service_endpoint, token, params)
+    return req
+
+def carddetails_userprofile(token, memberId, applicationId):
+    params = None
+    endpoint = '/cardservices/api/rest/profile/read/'
+    service_endpoint = endpoint+memberId
+    req = customer_oxygen_request(service_endpoint, token, params)
+    return req
+
 def oxygen_request(endpoint, params):
     client_id = app.config["OXYGEN_GLOBAL_CLIENT_ID"]
     client_secret = app.config["OXYGEN_GLOBAL_CLIENT_SECRET"]
@@ -601,9 +639,34 @@ def invoice():
     #TODO: other statuses..
     return render_template("invoice.html", invoice=invoice, order=order, error=error, qrcode_svg=qrcode_svg, url=url)
 
-@app.route('/card')
 def card():
     return render_template("card.html")
+
+@app.route('/cardlogin', methods=['GET', 'POST'])
+def cardlogin():
+    error = None
+    if request.method == 'POST':
+        applicationId = 'ichoose' ### Need to be in the config
+        userName = request.form['username']
+        password = request.form['password']
+        headers = {"Content-Type": "application/json"}
+        payload = {"userName": userName, "password": password, "applicationId": applicationId}
+        url = 'https://oxygentestenv01.oxygen-global.com/cardservices/api/public/token'
+        r = requests.post(url, json=payload)
+        if r.status_code == 200:
+            params_detailsbyuserid = None
+            token = r.json()['token']
+            memberId = r.json()['memberId']
+            req_detailsbyuserid = carddetails_detailsbyuserid(token, userName, applicationId)
+            if not req_detailsbyuserid:
+                return None
+            req_userprofile = carddetails_userprofile(token, memberId, applicationId)
+            if not req_userprofile:
+                return None
+
+            return render_template('cardholderdetails.html', req_detailsbyuserid=req_detailsbyuserid)
+
+    return render_template('cardlogin.html')
 
 @app.route('/oxy_echo')
 def oxy_echo():

@@ -30,7 +30,7 @@
       {% if current_user.is_authenticated and current_user.bronze_data or g.bronze_authorized %}
       <button class="btn btn-primary" type="button" onclick="window.location.href='/logout'"/>Logout</button>
       {% else %}
-      <button class="btn btn-primary" type="button" onclick="window.location.href='/bronze_oauth'"/>Bronze Login</button>
+      <button class="btn btn-primary" type="button" onclick="window.location.href='/bronze_oauth'"/>Login with Bronze</button>
       {% endif %}
     </nav>
   </head>
