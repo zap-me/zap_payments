@@ -639,6 +639,7 @@ def invoice():
     #TODO: other statuses..
     return render_template("invoice.html", invoice=invoice, order=order, error=error, qrcode_svg=qrcode_svg, url=url)
 
+@app.route('/card')
 def card():
     return render_template("card.html")
 
