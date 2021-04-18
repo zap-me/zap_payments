@@ -1,14 +1,13 @@
 {% extends "layout.html" %}
 
 {% block content %}
-{% if current_user.is_authenticated %}
     <div class="row justify-content-center">
     <div class="col-sm-6">
         <ul>
-	    {% if current_user.has_role("bronze") %}
             <li>
-                <a href="/utilities">ZAP Bill Payment</a>
+                <a href="/spin">ZAP Spin</a>
             </li>
+	    {% if current_user.has_role("bronze") %}
 	    <!--
             <li>
                 <a href="/debit">ZAP Debit Card</a>
@@ -18,14 +17,15 @@
         </ul>
     </div>
     </div>
-{% endif %}
 {% endblock %}
 
 {% block footer %}
 <div class="row justify-content-center">
 <div class="col-sm-6">
     <small class="text-muted font-weight-light">
+	    {% if current_user.has_role("admin") %}
         <a href="{{ url_for('admin.index') }}" class="text-muted">admin</a>
+	    {% endif %}
     </small>
 </div>
 </div>

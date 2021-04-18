@@ -18,7 +18,6 @@ from flask_security import Security, SQLAlchemyUserDatastore, \
     UserMixin, RoleMixin, login_required, current_user
 from marshmallow import Schema, fields
 from markupsafe import Markup
-import jsbeautifier
 
 from app_core import app, db
 from utils import generate_key
@@ -79,50 +78,46 @@ class BronzeData(db.Model):
 
 class InvoiceSchema(Schema):
     date = fields.Float()
+    expiry = fields.Float()
     token = fields.String()
     nonce = fields.Integer()
     secret = fields.String()
     email = fields.String()
     amount = fields.Integer()
-    amount_zap = fields.Integer()
-    bronze_broker_token = fields.String()
     status = fields.String()
     tx_seen = fields.Boolean()
 
 class Invoice(db.Model):
     STATUS_CREATED = "Created"
     STATUS_READY = "Ready"
-    STATUS_INCOMING = "Incomming" #sp :(
+    STATUS_INCOMING = "Incoming"
     STATUS_CONFIRMED = "Confirmed"
-    STATUS_PAYOUTWAIT = "PayoutWait"
-    STATUS_SENT = "Sent"
     STATUS_EXPIRED = "Expired"
 
     id = db.Column(db.Integer, primary_key=True)
     date = db.Column(db.DateTime(), nullable=False)
+    expiry = db.Column(db.DateTime(), nullable=False)
     token = db.Column(db.String(255), unique=True, nullable=False)
     nonce = db.Column(db.Integer, nullable=False)
     secret = db.Column(db.String(255), nullable=False)
     email = db.Column(db.String(255))
     amount = db.Column(db.Integer, nullable=False)
-    amount_zap = db.Column(db.Integer, nullable=False)
-    bronze_broker_token = db.Column(db.String(255), nullable=False)
     status = db.Column(db.String(255))
     tx_seen = db.Column(db.Boolean, nullable=False)
-    utility_name = db.Column(db.String(255))
+    txid = db.Column(db.String(255))
 
-    def __init__(self, email, amount, amount_zap, bronze_broker_token, status, utility_name):
+    def __init__(self, email, amount, status):
         self.generate_defaults()
         self.email = email
         self.amount = amount
-        self.amount_zap = amount_zap
-        self.bronze_broker_token = bronze_broker_token
         self.status = status
         self.tx_seen = False
-        self.utility_name = utility_name
+        self.txid = None
 
     def generate_defaults(self):
         self.date = datetime.datetime.now()
+        delta = datetime.timedelta(seconds = app.config["INVOICE_EXPIRY_SECONDS"])
+        self.expiry = self.date + delta
         self.token = generate_key(8)
         self.nonce = 0
         self.secret = generate_key(16)
@@ -137,7 +132,7 @@ class Invoice(db.Model):
 
     @classmethod
     def all_with_email_and_not_terminated(cls, session):
-        return session.query(cls).filter(and_(cls.email != None, or_(cls.status == None, and_(cls.status != cls.STATUS_SENT, cls.status != cls.STATUS_EXPIRED)))).all()
+        return session.query(cls).filter(and_(cls.email != None, or_(cls.status == None, and_(cls.status != cls.STATUS_CONFIRMED, cls.status != cls.STATUS_EXPIRED)))).all()
 
     def __repr__(self):
         return "<Invoice %r %r>" % (self.token, self.status)
@@ -146,15 +141,21 @@ class Invoice(db.Model):
         schema = InvoiceSchema()
         return schema.dump(self).data
 
-class Utility(db.Model):
+class Spin(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     date = db.Column(db.DateTime(), nullable=False)
-    name = db.Column(db.String(255), nullable=False)
-    description = db.Column(db.Text())
-    bank_description = db.Column(db.Text(), nullable=False)
+    bet = db.Column(db.Integer, nullable=False)
+    multiplier = db.Column(db.Integer, nullable=False)
+    result = db.Column(db.Integer, nullable=True)
+    win = db.Column(db.Boolean, nullable=True)
+    invoice_id = db.Column(db.Integer, db.ForeignKey(Invoice.id))
+    invoice = db.relationship(Invoice, uselist=False)
 
-    def __init__(self, name):
+    def __init__(self, bet, multiplier, invoice):
         self.generate_defaults()
+        self.bet = bet
+        self.multiplier = multiplier
+        self.invoice = invoice
 
     def generate_defaults(self):
         self.date = datetime.datetime.now()
@@ -168,20 +169,15 @@ class Utility(db.Model):
         return session.query(cls).all()
 
     @classmethod
-    def all_alphabetical(cls, session):
-        return session.query(cls).order_by(cls.name).all()
-
-    @classmethod
     def from_id(cls, session, utility_id):
         return session.query(cls).filter(cls.id == utility_id).first()
 
     @classmethod
-    def jsonify_bank_descriptions(cls, utilities):
-        for utility in utilities:
-            utility.bank_description_json = json.loads(utility.bank_description)
+    def from_invoice(cls, session, invoice):
+        return session.query(cls).filter(cls.invoice_id == invoice.id).first()
 
     def __repr__(self):
-        return "<Utility %r>" % (self.name)
+        return "<Spin %r>" % (self.name)
 
 #
 # Setup Flask-Security
@@ -197,63 +193,6 @@ security = Security(app, user_datastore)
 def _format_amount(view, context, model, name):
     if name == 'amount':
         return Markup(model.amount / 100)
-    if name == 'amount_zap':
-        return round((model.amount_zap / 100),2)
-
-def fields_check(fields):
-    TYPE = 'type'
-    TARGET = 'target'
-    mandatory = ['label', 'description', TYPE, TARGET]
-    valid_types = ['number', 'text']
-    valid_targets = ['reference', 'code', 'particulars']
-    def target_check(target):
-        if target not in valid_targets:
-            raise ValidationError('"{}" is not one of "{}"'.format(target, valid_targets))
-    def target_check_list(targets):
-        if not targets:
-            raise ValidationError('{} "{}" is empty'.format(TARGET, targets))
-        for target in targets:
-            target_check(target)
-    valid_target_types = [(str, target_check), (list, target_check_list)]
-    for item in fields:
-        if not isinstance(item, dict):
-            raise ValidationError('"{}" is not a dictionary'.format(item))
-        for param in mandatory:
-            if param not in item:
-                raise ValidationError('"{}" is missing "{}" parameter'.format(item, param))
-        if item[TYPE] not in valid_types:
-            raise ValidationError('"{}" is not one of "{}"'.format(TYPE, valid_types))
-        target = item[TARGET]
-        valid_target_type = False
-        for target_type, target_check_fn in valid_target_types:
-            if isinstance(target, target_type):
-                valid_target_type = True
-                target_check_fn(target)
-        if not valid_target_type:
-            lst = [target_type for target_type, target_check_fn in valid_target_types]
-            raise ValidationError('"{}" is not one of "{}"'.format(TARGET, lst))
-
-def bank_description_check(form, field):
-    ACCOUNT_NUMBER = 'account_number'
-    FIELDS = 'fields'
-    mandatory = ['name', ACCOUNT_NUMBER, FIELDS]
-    try:
-        json_data = json.loads(field.data)
-    except:
-        raise ValidationError('Invalid JSON')
-    if not isinstance(json_data, list):
-        raise ValidationError('Root object is not a list/array')
-    for item in json_data:
-        if not isinstance(item, dict):
-            raise ValidationError('"{}" is not a dictionary'.format(item))
-        for param in mandatory:
-            if param not in item:
-                raise ValidationError('"{}" is missing "{}" parameter'.format(item, param))
-        if not isinstance(item[ACCOUNT_NUMBER], str):
-            raise ValidationError('"{}" is not a string'.format(ACCOUNT_NUMBER))
-        if not isinstance(item[FIELDS], list):
-            raise ValidationError('"{}" is not a list/array'.format(FIELDS))
-        fields_check(item[FIELDS])
 
 class ReloadingIterator:
     def __init__(self, iterator_factory):
@@ -292,29 +231,4 @@ class UserModelView(RestrictedModelView):
     column_editable_list = ['roles']
 
 class InvoiceModelView(RestrictedModelView):
-    column_formatters = dict(amount=_format_amount, amount_zap=_format_amount)
-    column_labels = dict(amount='NZD Amount', amount_zap='ZAP Amount')
-
-class UtilityModelView(RestrictedModelView):
-    can_create = True
-    can_delete = True
-    can_edit = True
-
-    form_widget_args = {
-        'description': {
-            'rows': 5
-        },
-        'bank_description': {
-            'rows': 20,
-            'style': 'font-family: monospace;'
-        }
-    }
-
-    form_args = dict(
-        bank_description = dict(validators=[bank_description_check])
-    )
-
-    def on_model_change(self, form, model, is_created):
-        opts = jsbeautifier.default_options()
-        opts.indent_size = 2
-        model.bank_description = jsbeautifier.beautify(form.bank_description.data, opts)
+    column_formatters = dict(amount=_format_amount)

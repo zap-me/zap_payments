@@ -1,0 +1,46 @@
+{% extends "layout.html" %}
+
+{% block css %}
+    <link rel="stylesheet" href="/static/wheel.css">
+{% endblock %}
+
+{% block content %}
+    <div class="row justify-content-center">
+    <div class="col-sm-10">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Spin</h3>
+            <p class="card-text">Spin the wheel</p>
+        </div>
+        <div class="card-body">
+            Bet: {{ spin.bet / 100 }} ZAP
+            <br/>
+            Multiplier: {{ spin.multiplier }}x
+            <br/>
+            Win: {{ spin.bet / 100 * spin.multiplier }} ZAP
+            <br/>
+            <div class="d-flex justify-content-center">
+                <div id="wheelOfFortune">
+                    <canvas id="wheel" width="300" height="300"></canvas>
+                    <div id="spin"></div>
+                </div>
+            </div>
+            <span id="result"></span>
+        </div>
+    </div>
+    </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script src="/static/wheel.js"></script>
+    <script>
+        wheelInit(wheelSectors(10, 10 / {{ spin.multiplier }}), 1000, {{ spin.win | tojson }}, function() {
+            const EL_result = document.querySelector("#result");
+            if ({{ spin.win | tojson }})
+                EL_result.innerHTML = "CONGRATULATIONS!";
+            else
+                EL_result.innerHTML = "better luck next time";
+        });
+    </script>
+{% endblock %}

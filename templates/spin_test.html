@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+
+{% block css %}
+    <link rel="stylesheet" href="/static/wheel.css">
+{% endblock %}
+
+{% block content %}
+    <div class="row justify-content-center">
+    <div class="col-sm-6">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Spin</h3>
+            <p class="card-text">Spin the wheel</p>
+        </div>
+        <div class="card-body">
+            <div id="wheelOfFortune">
+                <canvas id="wheel" width="300" height="300"></canvas>
+                <div id="spin"></div>
+            </div>
+        </div>
+    </div>
+    </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script src="/static/wheel.js"></script>
+    <script>
+        wheelInit(wheelSectors(10, 2), 1000, true, () => console.log('boo!'));
+    </script>
+{% endblock %}

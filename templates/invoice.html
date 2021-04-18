@@ -3,21 +3,16 @@
 {% block content %}
     <div class="row justify-content-center">
     <div class="col-sm-6">
-    {% if error %}
-    <div class="alert alert-danger" role="alert">
-        {{error}}
-    </div>
-    {% endif %}
 
-    {% if order %}
-        {% set zap = '{0:0.2f}'.format(invoice.amount_zap/100.0) %}
-        {% if order.status == invoice.STATUS_CREATED %}
+    {% if invoice %}
+        {% set zap = '{0:0.2f}'.format(invoice.amount/100.0) %}
+        {% if invoice.status == invoice.STATUS_CREATED %}
     <div class="alert alert-warning" role="alert">
         Check ZAP amount is ok
     </div>
         {% endif %}
     <div class="card">
-        {% if order.status == invoice.STATUS_CREATED %}
+        {% if invoice.status == invoice.STATUS_CREATED %}
         <div class="card-header">
             Required amount {{zap}} ZAP
         </div>
@@ -26,8 +21,10 @@
                 <input type="hidden" name="token" value="{{invoice.token}}" />
                 <button class="btn btn-lg btn-primary btn-block" type="submit">Yes I have {{zap}} ZAP ready</button>
             </form>
+            <br/>
+            Expiry: <span id="expiry"></span>
         </div>
-        {% elif order.status == invoice.STATUS_READY %}
+        {% elif invoice.status == invoice.STATUS_READY %}
         <div class="card-body">
             {% if invoice.tx_seen %}
                 Transaction seen, waiting for exchange backend to process it..
@@ -36,31 +33,25 @@
                 {{qrcode_svg | safe}}
                 </div>
                 <br/>
-                <a href="{{url}}">{{url}}</a>
+                <small>
+                    <a href="{{url}}">{{url}}</a>
+                </small>
+                <br/>
+                Expiry: <span id="expiry"></span>
             {% endif %}
             <br/>
-            Expiry: <span id="expiry"></span>
 	    {% set formatted_amount = '{0:0.2f}'.format(invoice.amount/100.0) %}
-	    <br/>Utility Name: {{invoice.utility_name}}
 	    <br/>Amount: ${{formatted_amount}}
         </div>
-        {% elif order.status == invoice.STATUS_INCOMING %}
+        {% elif invoice.status == invoice.STATUS_INCOMING %}
         <div class="card-body">
             Transaction registered, waiting to confirm..
         </div>
-        {% elif order.status == invoice.STATUS_CONFIRMED %}
+        {% elif invoice.status == invoice.STATUS_CONFIRMED %}
         <div class="card-body">
             Transaction confirmed..
         </div>
-        {% elif order.status == invoice.STATUS_PAYOUTWAIT %}
-        <div class="card-body">
-            Transaction confirmed. Waiting for bank payment to be made..
-        </div>
-        {% elif order.status == invoice.STATUS_PAYOUTWAIT %}
-        <div class="card-body">
-            Transaction confirmed. Bank payment made.
-        </div>
-        {% elif order.status == invoice.STATUS_EXPIRED %}
+        {% elif invoice.status == invoice.STATUS_EXPIRED %}
         <div class="card-body">
             EXPIRED
         </div>
@@ -69,8 +60,7 @@
             <small>
                 <div>Token: {{invoice.token}}</div>
                 <div>Tx Seen: {{invoice.tx_seen}}</div>
-                <div>Bronze Token: {{invoice.bronze_broker_token}}</div>
-                <div>Bronze Order Status: {{order.status}}<div>
+                <div>Status: {{invoice.status}}<div>
             </small>
         </div>
     </div>
@@ -80,7 +70,7 @@
 {% endblock %}
 
 {% block scripts %}
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script>
         function reloadNoPost() {
             window.location = window.location.href.split("#")[0];
@@ -101,7 +91,7 @@
             var expiry = document.getElementById("expiry");
             if (expiry) {
                 var countDownTimer = setInterval(function() {
-                    var countDownDate = new Date({{order["expiry"] * 1000}}).getTime();
+                    var countDownDate = new Date({{invoice.expiry.timestamp() * 1000}}).getTime();
                     var now = new Date().getTime();
                     var distance = countDownDate - now;
                     var minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
@@ -116,34 +106,29 @@
 
             // socket.io
             setTimeout(function() {
-                //const socket = io(document.location.scheme + document.location.host + "/");
-                const socket = io("/");
+                //const socket = io(document.location.scheme + document.location.host + "/invoice");
+                const socket = io("/invoice");
 
                 socket.on('connect', () => {
                     console.log("socket connected");
+                    socket.emit('invoice', '{{invoice.token}}');
                 });
                 socket.on('disconnect', () => {
                     console.log("socket disconnected");
                 });
                 socket.on('update', (invoice) => {
                     console.log("update: " + invoice);
+                    if ("{{invoice.status}}" != invoice.status) {
+                        reloadNoPost();
+                    }
                 });
                 socket.on('tx', (tx) => {
                     console.log("tx: " + tx);
                     reloadNoPost();
                 });
-                socket.on('order_status', (status) => {
-                    console.log("order_status: " + status);
-                    {% if order %}
-                    if ("{{order.status}}" != status) {
-                        reloadNoPost();
-                    }
-                    {% endif %}
-                });
                 socket.on('info', (msg) => {
                     console.log("info: " + msg);
                 });
-                socket.emit('invoice', '{{invoice.token}}');
             }, 100);
         });
     </script>
