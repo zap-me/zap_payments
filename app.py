@@ -219,7 +219,7 @@ def check_bronze_auth(flash_it=False):
             if userinfo.ok:
                 userinfo = userinfo.json()
                 email = userinfo['email']
-                user = user_datastore.get_user(email)
+                user = user_datastore.find_user(case_insensitive=True, email=email)
                 if not user:
                     logger.info('user does not exist with email "{0}"'.format(email))
                     user = user_datastore.create_user(email=email)
