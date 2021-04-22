@@ -5,25 +5,40 @@
 <div class="col-sm-6">
 <form method="POST">
     <h1 class="h3 mb-3 font-weight-normal">Please choose the spin amount</h1>
+    <!--
     <div class="form-group">
         <label for="email">Email:</label>
         <input name="email" id="email" class="form-control" type="email" value="{{email}}">
     </div>
+    -->
     <div class="form-group">
-        <label for="amount">Amount:</label>
-        <input name="amount" id="amount" class="form-control" type="number" value="{{amount}}">
+        <label for="amount">Bet Amount:</label>
+        <input name="amount" id="amount" class="form-control" type="number" value="{{amount}}" onchange="update()">
     </div>
     <div class="form-group">
-        <label for="amount">Return:</label>
-        <select name="multiplier" id="multiplier" class="form-control">
+        <label for="amount">Multiplier:</label>
+        <select name="multiplier" id="multiplier" class="form-control" onchange="update()">
             <option value="2" {% if multiplier == 2 %}selected{% endif %}>2x</option>
             <option value="5" {% if multiplier == 5 %}selected{% endif %}>5x</option>
             <option value="10" {% if multiplier == 10 %}selected{% endif %}>10x</option>
         </select>
     </div>
+    <span id="update"></span>
 
     <button class="btn btn-lg btn-primary btn-block" type="submit">Submit</button>
 </form>
 </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function update() {
+        var amount = document.getElementById("amount").value;
+        var mult = document.getElementById("multiplier").value;
+        var win = parseInt(amount) * parseInt(mult);
+        document.getElementById("update").innerHTML = "Win: " + win + " ZAP!<br><br>";
+    }
+
+</script>
 {% endblock %}

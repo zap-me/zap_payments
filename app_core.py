@@ -5,6 +5,7 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail_sendgrid import MailSendGrid
 from flask_socketio import SocketIO
+import pywaves
 
 from addresswatcher import AddressWatcher
 from timer import Timer
@@ -36,6 +37,8 @@ if os.getenv("SERVER_NAME"):
     app.config["SERVER_NAME"] = os.getenv("SERVER_NAME")
 if os.getenv("ZAP_ADDRESS"):
     app.config["ZAP_ADDRESS"] = os.getenv("ZAP_ADDRESS")
+if os.getenv("ZAP_SEED"):
+    app.config["ZAP_SEED"] = os.getenv("ZAP_SEED")
 if os.getenv("SESSION_KEY"):
     app.config["SECRET_KEY"] = os.getenv("SESSION_KEY")
 if os.getenv("PASSWORD_SALT"):

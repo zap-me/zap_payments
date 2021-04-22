@@ -148,6 +148,7 @@ class Spin(db.Model):
     multiplier = db.Column(db.Integer, nullable=False)
     result = db.Column(db.Integer, nullable=True)
     win = db.Column(db.Boolean, nullable=True)
+    payout_txid = db.Column(db.String(255), nullable=True)
     invoice_id = db.Column(db.Integer, db.ForeignKey(Invoice.id))
     invoice = db.relationship(Invoice, uselist=False)
 

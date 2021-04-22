@@ -10,7 +10,8 @@ psycopg2-binary==2.8.6
 requests==2.25.1
 gevent==21.1.2
 gevent-websocket==0.10.1
-base58==2.1.0
+base58==0.2.5
 python-stdnum==1.16
 qrcode==6.1
 email-validator==1.1.2
+PyWaves==0.8.38

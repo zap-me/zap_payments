@@ -24,6 +24,7 @@ import werkzeug
 import requests
 import qrcode
 import qrcode.image.svg
+import pywaves
 from bronze import make_bronze_blueprint, bronze
 
 from app_core import app, db, mail, socketio, aw, timer
@@ -118,6 +119,51 @@ def bronze_request(endpoint, params):
         logger.error("ERROR: response http status %d (%s)" % (r.status_code, r.content))
         return None, r.content.decode("utf-8")
     return r, None
+
+def get_json_params(json_content, param_names):
+    param_values = []
+    param_name = ''
+    try:
+        for param in param_names:
+            param_name = param
+            param_values.append(json_content[param])
+    except Exception as e: # pylint: disable=broad-except
+        logger.error("'%s' not found", param_name)
+        logger.error(e)
+        return param_values, bad_request(f"'{param_name}' not found")
+    return param_values, None
+
+def is_address(val):
+    try:
+        return pywaves.validateAddress(val)
+    except: # pylint: disable=bare-except
+        return False
+
+def create_transaction_waves(recipient, amount, attachment):
+    # set pywaves to online mode and testnet
+    pywaves.setOnline()
+    if app.config["TESTNET"]:
+        pywaves.setNode('https://testnode1.wavesnodes.com', 'testnet')
+    logger.info('chain: %s, node: %s', pywaves.getChain(), pywaves.getNode())
+    # send funds
+    asset_fee = 1
+    if not recipient:
+        short_msg = "recipient is null or an empty string"
+        logger.error(short_msg)
+        err = Exception(short_msg)
+        raise err
+    if not is_address(recipient):
+        short_msg = "recipient is not a valid address"
+        logger.error(short_msg)
+        err = Exception(short_msg)
+        raise err
+    recipient = pywaves.Address(recipient)
+    asset = pywaves.Asset(app.config['ASSET_ID'])
+    pw_address = pywaves.Address(seed=app.config['ZAP_SEED'])
+    res = pw_address.sendAsset(recipient, asset, amount, attachment, feeAsset=asset, txFee=asset_fee)
+    if not res:
+        return None
+    return res['id']
 
 def transfer_tx_callback(tx):
     txt = json.dumps(tx)
@@ -288,9 +334,9 @@ def start_address_watcher():
     timer.add_timer(timer_callback, app.config["TIMER_SECONDS"])
     timer.start()
 
-def bad_request(message):
+def bad_request(message, code=400):
     response = jsonify({"message": message})
-    response.status_code = 400
+    response.status_code = code
     return response
 
 def find_urls(string): 
@@ -434,9 +480,9 @@ def spin_ep():
         email = request.form.get("email")
         amount = request.form.get("amount")
         multiplier = request.form.get("multiplier")
-        error = validate_email(email)
-        if not error:
-            error = validate_amount(amount)
+        #error = validate_email(email)
+        #if not error:
+        error = validate_amount(amount)
         if not error:
             error = validate_multiplier(multiplier)
         if not error:
@@ -470,11 +516,60 @@ def spin_execute_ep(token):
         spin.win = spin.result == 0
         db.session.add(spin)
         db.session.commit()
-    return render_template("spin_execute.html", spin=spin, invoice=invoice)
+    url = None
+    qrcode_svg = None
+    if not spin.payout_txid:
+        logger.info('request.url is %s', request.url)
+        url_parts = urllib.parse.urlparse(request.url)
+        scheme = url_parts.scheme
+        if request.headers.get('X-Forwarded-Proto') == 'https':
+            scheme = 'https'
+        url = url_parts._replace(scheme='premiostagelink', path='/claim_payment/{}'.format(token), query='scheme={}'.format(scheme)).geturl()
+        qrcode_svg = qrcode_svg_create(url)
+    return render_template("spin_execute.html", spin=spin, invoice=invoice, url=url, qrcode_svg=qrcode_svg)
 
 @app.route("/spin_test")
 def spin_test_ep():
     return render_template("spin_test.html")
+
+@app.route("/claim_payment/<token>", methods=["POST"])
+def claim_payment(token):
+    invoice = Invoice.from_token(db.session, token)
+    if not invoice:
+        return abort(404)
+    if not invoice.txid:
+        return abort(400)
+    spin = Spin.from_invoice(db.session, invoice)
+    if not spin:
+        return abort(404)
+    if not spin.win:
+        return abort(400)
+    if spin.payout_txid:
+        return bad_request('payout already sent')
+
+    content_type = request.content_type
+    logger.info("claim_payment: content type - %s", content_type)
+    recipient = ""
+    asset_id = ""
+    content = request.get_json(force=True)
+    if content is None:
+        return bad_request("failed to decode JSON object")
+    params, err_response = get_json_params(content, ["recipient", "asset_id"])
+    if err_response:
+        return bad_request(err_response)
+    recipient, asset_id = params
+    try:
+        txid = create_transaction_waves(recipient, spin.bet * spin.multiplier, '')
+        if txid:
+            spin.payout_txid = txid
+            db.session.add(spin)
+            db.session.commit()
+            return 'ok'
+        else:
+            return bad_request('failed to send funds')
+    except Exception as e:
+        logger.error(e)
+        return bad_request(str(e))
 
 @app.route("/invoice", methods=["GET", "POST"])
 def invoice_ep():
@@ -556,6 +651,9 @@ if __name__ == "__main__":
             sys.exit(1)
         if "ZAP_ADDRESS" not in app.config:
             logger.error("ZAP_ADDRESS does not exist")
+            sys.exit(1)
+        if "ZAP_SEED" not in app.config:
+            logger.error("ZAP_SEED does not exist")
             sys.exit(1)
 
         # Bind to PORT if defined, otherwise default to 5000.
