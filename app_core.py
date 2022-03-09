@@ -10,11 +10,11 @@ from addresswatcher import AddressWatcher
 from timer import Timer
 
 class ReverseProxied(object):
-"""
-Because we are reverse proxied from an aws load balancer
-use environ/config to signal https
-since flask ignores preferred_url_scheme in url_for calls
-"""
+    """
+    Because we are reverse proxied from an aws load balancer
+    use environ/config to signal https
+    since flask ignores preferred_url_scheme in url_for calls
+    """
 
     def __init__(self, app):
         self.app = app
