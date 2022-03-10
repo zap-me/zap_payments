@@ -11,7 +11,7 @@ from timer import Timer
 
 class ReverseProxied(object):
     """
-    Because we are reverse proxied from an aws load balancer
+    Because we are reverse proxied from an http/s server
     use environ/config to signal https
     since flask ignores preferred_url_scheme in url_for calls
     """
